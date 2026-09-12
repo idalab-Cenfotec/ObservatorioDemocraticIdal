@@ -32,3 +32,8 @@ env/
 # =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# CONTEXTO DE CLAUDE CODE (NUNCA COMITEAR)
+# =========================
+ClaudeMD/

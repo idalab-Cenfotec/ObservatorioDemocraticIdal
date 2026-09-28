@@ -22,6 +22,16 @@ CORRECCION (con --fix):
   5. Elimina URL duplicadas (keep=first)
   6. Guarda el CSV corregido (--output o <input>_clean.csv)
 
+Formatos de fecha reconocidos al corregir:
+  - "2026-05-30 10:15:00", "2026-05-30", "30/05/2026" y variantes
+  - ISO 8601 con "T" y zona horaria ("2026-07-03T07:09:26.000Z"); si trae zona
+    se convierte a hora de Costa Rica (UTC-6), igual que el resto del corpus
+  - "mayo 30, 2026", "Ago 10, 2026" (mes completo o abreviado) y "30 de mayo de 2026"
+  - Relativas: "Hace 53 minutos", "Hace 2 horas", "Hace 3 dias", etc.
+Si la fecha no se puede interpretar ("Sin fecha", vacia, desconocida) se usa la
+fecha de extraccion (scraping_date). Con --inferred-out se guarda la lista de
+URLs en las que eso ocurrio, para marcarlas como date_source = 'inferido'.
+
 Ejemplos:
   python output_cleaner.py output/
   python output_cleaner.py output/lareaccioncr_20260516.csv
@@ -34,7 +44,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -57,8 +67,19 @@ MESES_ES = {
     "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
 }
 
+# Abreviaturas de mes (tres letras). Se aceptan tambien las de ingles que
+# no chocan con el espanol (jan, apr, aug, dec).
+MESES_ABREV = {
+    "ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4,
+    "may": 5, "jun": 6, "jul": 7, "ago": 8, "aug": 8, "sep": 9,
+    "set": 9, "oct": 10, "nov": 11, "dic": 12, "dec": 12,
+}
+
+# Hora de Costa Rica (UTC-6, sin horario de verano)
+CR_TZ = timezone(timedelta(hours=-6))
+
 RELATIVE_RE = re.compile(
-    r"hace\s+(?P<n>\d+)\s+(?P<unit>hora|horas|d\xeda|dias|d\xedas|semana|semanas|mes|meses|a\xf1o|a\xf1os)",
+    r"hace\s+(?P<n>\d+)\s+(?P<unit>segundos?|minutos?|horas?|d\xedas?|dias?|semanas?|mes(?:es)?|a\xf1os?|anos?)",
     re.IGNORECASE,
 )
 
@@ -188,21 +209,47 @@ def _try_parse_date(raw: str) -> datetime | None:
     return None
 
 
+def _try_parse_iso8601(raw: str) -> datetime | None:
+    """ISO 8601 con 'T' ("2026-07-03T07:09:26.000Z"). Si trae zona horaria se
+    convierte a hora de Costa Rica y se devuelve sin zona, como el resto del corpus."""
+    s = raw.strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}T", s):
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(CR_TZ).replace(tzinfo=None)
+    return dt
+
+
+def _mes_desde_texto(token: str) -> int | None:
+    """Numero de mes a partir de 'mayo', 'Ago', 'sept.', etc."""
+    t = token.lower().rstrip(".")
+    mes = MESES_ES.get(t)
+    if mes:
+        return mes
+    if len(t) <= 4:  # abreviatura: 'ago', 'sept'
+        return MESES_ABREV.get(t[:3])
+    return None
+
+
 def _try_parse_spanish(raw: str) -> datetime | None:
     raw = raw.strip()
-    # "mayo 30, 2026"
-    m = re.fullmatch(r"(\w+)\s+(\d{1,2}),?\s+(\d{4})", raw, re.IGNORECASE)
+    # "mayo 30, 2026" / "Ago 10, 2026"
+    m = re.fullmatch(r"([^\W\d_]+\.?)\s+(\d{1,2}),?\s+(\d{4})", raw, re.IGNORECASE)
     if m:
-        mes = MESES_ES.get(m.group(1).lower())
+        mes = _mes_desde_texto(m.group(1))
         if mes:
             try:
                 return datetime(int(m.group(3)), mes, int(m.group(2)))
             except ValueError:
                 pass
     # "30 de mayo de 2026"
-    m = re.fullmatch(r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})", raw, re.IGNORECASE)
+    m = re.fullmatch(r"(\d{1,2})\s+de\s+([^\W\d_]+)\s+de\s+(\d{4})", raw, re.IGNORECASE)
     if m:
-        mes = MESES_ES.get(m.group(2).lower())
+        mes = _mes_desde_texto(m.group(2))
         if mes:
             try:
                 return datetime(int(m.group(3)), mes, int(m.group(1)))
@@ -217,15 +264,19 @@ def _resolve_relative(raw: str, reference: datetime) -> datetime | None:
         return None
     n = int(m.group("n"))
     unit = m.group("unit").lower()
-    if "hora" in unit:
+    if unit.startswith("segundo"):
+        return reference - timedelta(seconds=n)
+    if unit.startswith("minuto"):
+        return reference - timedelta(minutes=n)
+    if unit.startswith("hora"):
         return reference - timedelta(hours=n)
-    if "d" in unit:  # dia / dias / dias
+    if unit.startswith("d"):  # dia / dias
         return reference - timedelta(days=n)
-    if "semana" in unit:
+    if unit.startswith("semana"):
         return reference - timedelta(weeks=n)
-    if "mes" in unit:
+    if unit.startswith("mes"):
         return reference - timedelta(days=n * 30)
-    if "a" in unit:  # ano / anos
+    if unit.startswith("a"):  # ano / anos
         return reference - timedelta(days=n * 365)
     return None
 
@@ -236,6 +287,10 @@ def normalize_date(raw: str, reference: datetime | None = None) -> str:
     raw = str(raw).strip()
 
     dt = _try_parse_date(raw)
+    if dt:
+        return dt.strftime(DATE_FORMAT)
+
+    dt = _try_parse_iso8601(raw)
     if dt:
         return dt.strftime(DATE_FORMAT)
 
@@ -266,11 +321,12 @@ def strip_html(text: str) -> str:
 # Pipeline de correccion
 # ---------------------------------------------------------------------------
 
-def fix_file(path: Path, output_path: Path) -> dict:
+def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) -> dict:
     print(f"Cargando: {path}")
     df = load_csv(path)
     initial_rows = len(df)
     stats: dict = {"initial": initial_rows}
+    original_pub = df["publication_date"].copy()
 
     # 1. Normalizar scraping_date
     print("  Normalizando scraping_date...")
@@ -295,6 +351,8 @@ def fix_file(path: Path, output_path: Path) -> dict:
 
     # Fallback: si publication_date sigue siendo NULL, usar scraping_date
     null_pub = df["publication_date"] == "NULL"
+    inferred = df.loc[null_pub, ["url", "source"]].copy()
+    inferred["publication_date_original"] = original_pub[null_pub].fillna("NULL")
     df.loc[null_pub, "publication_date"] = df.loc[null_pub, "scraping_date"]
     stats["pub_date_set_null"] = int((df["publication_date"] == "NULL").sum())
     stats["pub_date_fallback_to_scraping"] = int(null_pub.sum()) - stats["pub_date_set_null"]
@@ -333,6 +391,14 @@ def fix_file(path: Path, output_path: Path) -> dict:
 
     stats["final"] = len(df)
 
+    # Fechas inferidas: solo las filas que sobrevivieron a la limpieza
+    inferred = inferred[inferred["url"].isin(df["url"])]
+    stats["pub_date_inferred"] = len(inferred)
+    if inferred_out is not None:
+        inferred_out.parent.mkdir(parents=True, exist_ok=True)
+        inferred.to_csv(inferred_out, sep="|", index=False, encoding="utf-8")
+        print(f"  Fechas inferidas listadas en: {inferred_out}")
+
     # 8. Guardar
     print(f"  Guardando corpus corregido: {output_path}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +418,7 @@ def print_fix_summary(stats: dict, output_path: Path):
     print(f"  Filas finales:                     {stats['final']:>7,}")
     print()
     print(f"  Fechas pub. sin parsear -> scraping_date: {stats.get('pub_date_fallback_to_scraping', 0):>5,}")
+    print(f"  (fechas inferidas en filas finales:       {stats.get('pub_date_inferred', 0):>5,})")
     print(f"  Fechas pub. -> NULL (sin referencia):    {stats['pub_date_set_null']:>5,}")
     print(f"  Secciones vacias rellenadas:         {stats['section_filled']:>5,}")
     html = stats.get("html_stripped", {})
@@ -409,6 +476,9 @@ def main():
                         help="Corrige los problemas encontrados y guarda el archivo limpio")
     parser.add_argument("--output", type=str, default=None,
                         help="Ruta de salida al usar --fix (por defecto: <input>_clean.csv)")
+    parser.add_argument("--inferred-out", type=str, default=None,
+                        help="Con --fix: CSV donde se listan las URLs cuya fecha de publicacion "
+                             "no se pudo interpretar y se reemplazo por scraping_date")
     args = parser.parse_args()
 
     target = Path(args.path)
@@ -422,7 +492,7 @@ def main():
             sys.exit(f"ERROR: archivo no encontrado: {target}")
 
         out_path = Path(args.output) if args.output else target.with_name(target.stem + "_clean" + target.suffix)
-        stats = fix_file(target, out_path)
+        stats = fix_file(target, out_path, Path(args.inferred_out) if args.inferred_out else None)
         print_fix_summary(stats, out_path)
 
         # Validar el resultado

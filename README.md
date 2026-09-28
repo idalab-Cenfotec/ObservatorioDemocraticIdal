@@ -225,6 +225,36 @@ python output_cleaner.py output/lareaccioncr_20260516.csv
 
 El reporte se guarda automáticamente en el directorio `logs/`.
 
+Para **corregir** un CSV (fechas, HTML, secciones vacías, filas sin título, duplicados) agrega `--fix`:
+
+```bash
+python output_cleaner.py corpus/corpus_observatorio_v7.csv --fix --inferred-out fechas_inferidas.csv
+```
+
+Reconoce fechas como `2026-05-30 10:15:00`, `2026-07-03T07:09:26.000Z` (se convierte a hora de Costa Rica),
+`mayo 30, 2026`, `Ago 10, 2026`, `30 de mayo de 2026` y relativas (`Hace 53 minutos`, `Hace 2 horas`).
+Si una fecha no se puede interpretar (por ejemplo `Sin fecha`) se usa `scraping_date`, y con
+`--inferred-out` se guarda la lista de esas URLs para marcarlas como `date_source = 'inferido'`.
+
+---
+
+# Consolidar el Corpus (Fase 1)
+
+Las versiones diarias del pipeline (`corpus_observatorio_v{N}_{YYYYMMDD}.csv`) **no son acumulativas**, así que
+el corpus completo es la unión de todas más el corpus base histórico. `corpus_consolidator.py` la reconstruye,
+sin repetir artículos, y le aplica `output_cleaner.py --fix`:
+
+```bash
+python corpus_consolidator.py \
+    --base corpus_observatorio_v7_clean_20260703.csv \
+    --pipeline corpus-maestro.zip \
+    --output corpus_consolidado/
+```
+
+`--pipeline` acepta un directorio o el `.zip` del artefacto `corpus-maestro` de GitHub Actions.
+Deja en `--output` el corpus limpio (`corpus_consolidado_clean_<fecha>.csv`), la lista de fechas inferidas y un
+reporte JSON. Con `--dry-run` solo cuenta. Los CSV pesan cientos de MB y no se suben al repositorio.
+
 ---
 
 # Archivos Generados

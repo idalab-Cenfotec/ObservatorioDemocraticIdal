@@ -53,7 +53,7 @@ from urllib.parse import urlsplit
 
 import pandas as pd
 
-from output_cleaner import REQUIRED_COLUMNS, fix_file, validate_file
+from output_cleaner import DATE_FORMAT, REQUIRED_COLUMNS, fix_file, validate_file
 
 SEPARATOR = "|"
 PIPELINE_NAME_RE = re.compile(r"^corpus_observatorio_v(?P<ver>\d+)_(?P<fecha>\d{8})\.csv$")
@@ -158,6 +158,27 @@ def consolidate(bases: list[Path], pipeline: Path) -> tuple[pd.DataFrame, dict]:
 
 
 # ---------------------------------------------------------------------------
+# Fechas "resueltas" en silencio por una limpieza anterior
+# ---------------------------------------------------------------------------
+
+def find_silently_inferred(clean_path: Path, already_flagged: set[str]) -> pd.DataFrame:
+    """Detecta filas cuya publication_date coincide EXACTAMENTE con scraping_date
+    y que no fueron marcadas por output_cleaner en esta misma corrida.
+
+    Esto pasa cuando una base de entrada (p. ej. un *_clean.csv generado en una
+    corrida anterior de output_cleaner --fix, antes de que existiera --inferred-out)
+    ya habia reemplazado una fecha no interpretable por scraping_date, sin dejar
+    ningun rastro. El valor ya es una fecha valida (por eso output_cleaner no la
+    toca), pero sigue siendo una fecha inferida a efectos de date_source.
+    """
+    clean = pd.read_csv(clean_path, **READ_KWARGS)
+    mask = (clean["publication_date"] == clean["scraping_date"]) & ~clean["url"].isin(already_flagged)
+    extra = clean.loc[mask, ["url", "source"]].copy()
+    extra["publication_date_original"] = "(igual a scraping_date; probablemente ya resuelta por una limpieza anterior)"
+    return extra
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -205,6 +226,17 @@ def main():
     stats = fix_file(bruto_path, clean_path, inferred_out=inferred_path)
     report_val = validate_file(clean_path)
 
+    # Sumar las fechas que ya venian "resueltas" en silencio por una limpieza
+    # anterior de alguna base (mismo valor que scraping_date, sin marca de origen).
+    flagged = set(pd.read_csv(inferred_path, **READ_KWARGS)["url"]) if inferred_path.exists() else set()
+    extra_inferred = find_silently_inferred(clean_path, flagged)
+    if len(extra_inferred):
+        pd.concat([pd.read_csv(inferred_path, **READ_KWARGS), extra_inferred], ignore_index=True) \
+            .to_csv(inferred_path, sep=SEPARATOR, index=False, encoding="utf-8")
+        _log(f"+{len(extra_inferred):,} fechas inferidas adicionales detectadas (silenciosas) -> {inferred_path.name}")
+    stats["pub_date_inferred_silent"] = len(extra_inferred)
+    stats["pub_date_inferred_total"] = stats["pub_date_inferred"] + len(extra_inferred)
+
     clean = pd.read_csv(clean_path, **READ_KWARGS)
     reporte = {
         "generado": datetime.now().isoformat(timespec="seconds"),
@@ -228,7 +260,8 @@ def main():
     print(f"  Descartadas (sin titulo):   {stats['dropped_no_title']:>9,}")
     print(f"  Duplicados URL eliminados:  {stats['deduped']:>9,}")
     print(f"  FILAS FINALES:              {len(clean):>9,}   ({reporte['fuentes']} fuentes)")
-    print(f"  Fechas inferidas:           {stats['pub_date_inferred']:>9,}   -> {inferred_path.name}")
+    print(f"  Fechas inferidas:           {stats['pub_date_inferred_total']:>9,}   -> {inferred_path.name}")
+    print(f"    (de esta corrida: {stats['pub_date_inferred']:,}, ya resueltas en silencio antes: {stats['pub_date_inferred_silent']:,})")
     print(f"  Validacion del limpio:      {'OK' if report_val['ok'] else 'CON OBSERVACIONES'}")
     for issue in report_val["issues"]:
         print(f"    - {issue['type']} [{issue['value']}]: {issue['details']}")

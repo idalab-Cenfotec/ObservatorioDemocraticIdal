@@ -17,6 +17,7 @@ Uso:
 """
 
 import os
+import re
 import sys
 import argparse
 import pandas as pd
@@ -26,6 +27,9 @@ from datetime import datetime, timezone, timedelta
 CR_TZ      = timezone(timedelta(hours=-6))
 SEPARATOR  = "|"
 
+# corpus_observatorio_v{version}_{YYYYMMDD}.csv
+CORPUS_NAME_RE = re.compile(r"corpus_observatorio_v(\d+)_(\d{8})\.csv$")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 def _log(msg: str):
@@ -34,12 +38,28 @@ def _log(msg: str):
 
 
 def _find_latest_corpus(corpus_dir: str) -> Path | None:
-    """Encuentra el corpus maestro más reciente."""
+    """Encuentra el corpus maestro más reciente.
+
+    IMPORTANTE: se ordena por (fecha, versión) numéricos extraídos del nombre,
+    NO alfabéticamente por el nombre completo del archivo. Ordenar por texto
+    hacía que corpus_observatorio_v5_20260702.csv (versión 5, 2 de julio) le
+    ganara a corpus_observatorio_v1_20260905.csv (versión 1, 5 de septiembre),
+    porque "v5" es alfabéticamente mayor que "v1" — el corpus quedó "atascado"
+    en la base del 2 de julio durante meses en vez de acumular lo de cada día.
+    """
     p = Path(corpus_dir)
     if not p.exists():
         return None
-    corpora = sorted(p.glob("corpus_observatorio_v*.csv"), reverse=True)
-    return corpora[0] if corpora else None
+    candidatos = []
+    for f in p.glob("corpus_observatorio_v*.csv"):
+        m = CORPUS_NAME_RE.search(f.name)
+        if m:
+            version, fecha = int(m.group(1)), m.group(2)
+            candidatos.append((fecha, version, f))
+    if not candidatos:
+        return None
+    candidatos.sort()
+    return candidatos[-1][2]
 
 
 def _find_new_csvs(output_dir: str) -> list[Path]:

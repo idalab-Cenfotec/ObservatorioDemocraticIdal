@@ -16,6 +16,7 @@ Uso:
 import os
 import sys
 import argparse
+import requests
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -69,10 +70,88 @@ def _read_csv_safe(path: Path) -> pd.DataFrame | None:
         return None
 
 
+def enviar_a_n8n(df: pd.DataFrame, webhook_url: str, webhook_token: str) -> None:
+    """Envía el corpus a PostgreSQL vía el webhook de N8N (Anexo Técnico 3.7.1).
+
+    GitHub Actions y la VM institucional no están en la misma red, así que este
+    script (corre en un runner de GitHub Actions) no se conecta directo a
+    PostgreSQL. En su lugar, N8N recibe este webhook desde dentro de la red
+    interna de la VM, donde sí tiene acceso a la base.
+    """
+    registros = df[REQUIRED_COLUMNS].to_dict(orient="records")
+    resp = requests.post(
+        webhook_url,
+        json={"articulos": registros},
+        headers={"X-Webhook-Token": webhook_token},
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+
+def registrar_corrida_parcial(ruta_contingencia: str, error_msg: str) -> None:
+    """Deja constancia local de que el envío a N8N falló (Anexo Técnico 3.7.2).
+
+    Este script no tiene conexión directa a PostgreSQL (ver enviar_a_n8n), así
+    que no puede escribir en agent_runs por su cuenta. Se registra localmente
+    para que quede en los logs del run de GitHub Actions; cuando la corrida
+    diaria posterior lea contingencia/ y reintente el envío, esos artículos
+    quedan asociados a una corrida de agent_runs normal en N8N.
+    """
+    _log(f"⚠ Envío a N8N falló, corpus guardado en contingencia: {ruta_contingencia}")
+    _log(f"  Motivo: {error_msg}")
+
+
+def guardar_corpus_dual(
+    corpus: pd.DataFrame,
+    out_path: str,
+    webhook_url: str | None = None,
+    webhook_token: str | None = None,
+) -> None:
+    """Escritura dual (Anexo Técnico 3.7): guarda el CSV como siempre y, si hay
+    webhook configurado, intenta además enviarlo a PostgreSQL vía N8N. Si el
+    envío falla, el CSV de contingencia asegura que el lote no se pierda — se
+    reintenta en la siguiente corrida gracias a ON CONFLICT (url) DO NOTHING.
+    """
+    corpus.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
+
+    if webhook_url is None:
+        return
+
+    try:
+        enviar_a_n8n(corpus, webhook_url, webhook_token)
+        _log(f"Corpus enviado a PostgreSQL vía N8N ({len(corpus):,} artículos)")
+    except requests.exceptions.RequestException as e:
+        Path("contingencia").mkdir(parents=True, exist_ok=True)
+        ruta_contingencia = f"contingencia/{datetime.now(CR_TZ):%Y-%m-%d}_corpus.csv"
+        corpus.to_csv(ruta_contingencia, sep=SEPARATOR, index=False, encoding="utf-8")
+        registrar_corrida_parcial(ruta_contingencia, str(e))
+
+
+def reintentar_contingencia(webhook_url: str | None, webhook_token: str | None) -> None:
+    """Reintenta enviar los lotes que quedaron pendientes en contingencia/ por
+    una falla anterior del webhook (Anexo Técnico 3.7.2). Los que se envían
+    con éxito se eliminan; los que vuelven a fallar quedan para el próximo intento."""
+    if webhook_url is None:
+        return
+    cdir = Path("contingencia")
+    if not cdir.is_dir():
+        return
+    for f in sorted(cdir.glob("*.csv")):
+        try:
+            df = pd.read_csv(f, sep=SEPARATOR, dtype=str, on_bad_lines="skip", encoding="utf-8-sig")
+            enviar_a_n8n(df, webhook_url, webhook_token)
+            f.unlink()
+            _log(f"Contingencia reenviada y eliminada: {f.name} ({len(df):,} artículos)")
+        except requests.exceptions.RequestException as e:
+            _log(f"Contingencia {f.name} sigue sin poder enviarse: {e}")
+
+
 def build_corpus(
-    output_dir: str = "output",
-    corpus_dir: str = "corpus",
-    dry_run:    bool = False,
+    output_dir:    str = "output",
+    corpus_dir:    str = "corpus",
+    dry_run:       bool = False,
+    webhook_url:   str | None = None,
+    webhook_token: str | None = None,
 ) -> dict:
     """
     Construye el corpus maestro consolidado.
@@ -84,6 +163,9 @@ def build_corpus(
 ║      OBSERVATORIO DEMOCRÁTICO — Corpus Builder               ║
 ╚══════════════════════════════════════════════════════════════╝
 """)
+
+    # ── 0. Reintentar envíos pendientes de una corrida anterior ──────────────
+    reintentar_contingencia(webhook_url, webhook_token)
 
     # ── 1. Encontrar CSVs ────────────────────────────────────────────────────
     csvs = _find_csvs(output_dir)
@@ -170,7 +252,7 @@ def build_corpus(
     filename  = f"corpus_observatorio_v{version}_{fecha}.csv"
     out_path  = os.path.join(corpus_dir, filename)
 
-    corpus.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
+    guardar_corpus_dual(corpus, out_path, webhook_url, webhook_token)
 
     _log(f"Corpus guardado: {out_path}")
     _log(f"Versión        : v{version}")
@@ -211,6 +293,10 @@ def main():
                         help="Directorio donde se guarda el corpus maestro")
     parser.add_argument("--dry-run", action="store_true",
                         help="Muestra estadísticas sin guardar")
+    parser.add_argument("--webhook-url", default=os.environ.get("N8N_WEBHOOK_URL"),
+                        help="URL del webhook de N8N para escritura dual (o var. de entorno N8N_WEBHOOK_URL)")
+    parser.add_argument("--webhook-token", default=os.environ.get("N8N_WEBHOOK_TOKEN"),
+                        help="Token del webhook (o var. de entorno N8N_WEBHOOK_TOKEN)")
 
     args = parser.parse_args()
 
@@ -220,9 +306,11 @@ def main():
     corpus_dir = os.path.join(base_dir, args.corpus) if not os.path.isabs(args.corpus) else args.corpus
 
     build_corpus(
-        output_dir = output_dir,
-        corpus_dir = corpus_dir,
-        dry_run    = args.dry_run,
+        output_dir    = output_dir,
+        corpus_dir    = corpus_dir,
+        dry_run       = args.dry_run,
+        webhook_url   = args.webhook_url,
+        webhook_token = args.webhook_token,
     )
 
 

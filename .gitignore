@@ -10,6 +10,7 @@ execution_report_*.json
 # OUTPUTS DEL SCRAPER
 # =========================
 output/
+contingencia/
 *.csv
 *_backup.csv
 

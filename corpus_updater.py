@@ -20,12 +20,19 @@ import os
 import re
 import sys
 import argparse
+import requests
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 CR_TZ      = timezone(timedelta(hours=-6))
 SEPARATOR  = "|"
+
+# Schema v1.0 obligatorio (igual que en corpus_builder.py)
+REQUIRED_COLUMNS = [
+    "source", "url", "title", "publication_date",
+    "scraping_date", "section", "full_text", "language",
+]
 
 # corpus_observatorio_v{version}_{YYYYMMDD}.csv
 CORPUS_NAME_RE = re.compile(r"corpus_observatorio_v(\d+)_(\d{8})\.csv$")
@@ -95,6 +102,72 @@ def _next_version(corpus_dir: str, fecha: str) -> int:
     return max(versions) + 1 if versions else 1
 
 
+def enviar_a_n8n(df: pd.DataFrame, webhook_url: str, webhook_token: str) -> None:
+    """Envía SOLO los artículos nuevos del día a PostgreSQL vía el webhook de N8N
+    (Anexo Técnico 3.7.1), no el corpus completo. Mandar el corpus entero cada
+    día reenviaría decenas de miles de artículos ya cargados; el nodo Postgres
+    de N8N igual protege con ON CONFLICT (url) DO NOTHING, pero mandar solo lo
+    nuevo es lo que evita que tres corridas seguidas reenvíen todo el corpus
+    (criterio de aceptación de esta tarea, SCRUM-26).
+    """
+    registros = df[REQUIRED_COLUMNS].to_dict(orient="records")
+    resp = requests.post(
+        webhook_url,
+        json={"articulos": registros},
+        headers={"X-Webhook-Token": webhook_token},
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+
+def registrar_corrida_parcial(ruta_contingencia: str, error_msg: str) -> None:
+    """Deja constancia local de que el envío a N8N falló (Anexo Técnico 3.7.2).
+    Este script no tiene conexión directa a PostgreSQL (ver enviar_a_n8n)."""
+    _log(f"⚠ Envío a N8N falló, artículos nuevos guardados en contingencia: {ruta_contingencia}")
+    _log(f"  Motivo: {error_msg}")
+
+
+def reintentar_contingencia(webhook_url: str | None, webhook_token: str | None) -> None:
+    """Reintenta enviar los lotes que quedaron pendientes en contingencia/ por
+    una falla anterior del webhook (Anexo Técnico 3.7.2). Los que se envían
+    con éxito se eliminan; los que vuelven a fallar quedan para el próximo intento."""
+    if webhook_url is None:
+        return
+    cdir = Path("contingencia")
+    if not cdir.is_dir():
+        return
+    for f in sorted(cdir.glob("*.csv")):
+        try:
+            df = pd.read_csv(f, sep=SEPARATOR, dtype=str, on_bad_lines="skip", encoding="utf-8-sig")
+            enviar_a_n8n(df, webhook_url, webhook_token)
+            f.unlink()
+            _log(f"Contingencia reenviada y eliminada: {f.name} ({len(df):,} artículos)")
+        except requests.exceptions.RequestException as e:
+            _log(f"Contingencia {f.name} sigue sin poder enviarse: {e}")
+
+
+def enviar_nuevos_dual(
+    df_nuevos: pd.DataFrame,
+    webhook_url: str | None,
+    webhook_token: str | None,
+) -> None:
+    """Escritura dual del lado del updater (Anexo Técnico 3.7): el CSV del
+    corpus ya se guarda igual que siempre; esto solo intenta además mandar los
+    artículos nuevos del día a PostgreSQL. Si falla, quedan en contingencia/
+    para reintentarse en la corrida siguiente."""
+    if webhook_url is None or len(df_nuevos) == 0:
+        return
+
+    try:
+        enviar_a_n8n(df_nuevos, webhook_url, webhook_token)
+        _log(f"Artículos nuevos enviados a PostgreSQL vía N8N ({len(df_nuevos):,})")
+    except requests.exceptions.RequestException as e:
+        Path("contingencia").mkdir(parents=True, exist_ok=True)
+        ruta_contingencia = f"contingencia/{datetime.now(CR_TZ):%Y-%m-%d}_nuevos.csv"
+        df_nuevos.to_csv(ruta_contingencia, sep=SEPARATOR, index=False, encoding="utf-8")
+        registrar_corrida_parcial(ruta_contingencia, str(e))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 def show_stats(corpus_dir: str):
     """Muestra estadísticas del corpus maestro actual."""
@@ -127,9 +200,11 @@ def show_stats(corpus_dir: str):
 
 # ─────────────────────────────────────────────────────────────────────────────
 def update_corpus(
-    output_dir: str = "output",
-    corpus_dir: str = "corpus",
-    dry_run:    bool = False,
+    output_dir:    str = "output",
+    corpus_dir:    str = "corpus",
+    dry_run:       bool = False,
+    webhook_url:   str | None = None,
+    webhook_token: str | None = None,
 ) -> dict:
     """
     Actualiza el corpus maestro con artículos nuevos del día.
@@ -141,6 +216,9 @@ def update_corpus(
 ║      OBSERVATORIO DEMOCRÁTICO — Corpus Updater               ║
 ╚══════════════════════════════════════════════════════════════╝
 """)
+
+    # ── 0. Reintentar envíos pendientes de una corrida anterior ──────────────
+    reintentar_contingencia(webhook_url, webhook_token)
 
     # ── 1. Encontrar corpus maestro existente ────────────────────────────────
     latest = _find_latest_corpus(corpus_dir)
@@ -239,6 +317,7 @@ def update_corpus(
     out_path = os.path.join(corpus_dir, filename)
 
     corpus_nuevo.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
+    enviar_nuevos_dual(df_nuevos, webhook_url, webhook_token)
 
     _log(f"Corpus actualizado: {out_path}")
     _log(f"Versión           : v{version}")
@@ -266,6 +345,10 @@ def main():
                         help="Muestra estadísticas sin guardar")
     parser.add_argument("--stats",   action="store_true",
                         help="Muestra estado actual del corpus y sale")
+    parser.add_argument("--webhook-url", default=os.environ.get("N8N_WEBHOOK_URL"),
+                        help="URL del webhook de N8N para escritura dual (o var. de entorno N8N_WEBHOOK_URL)")
+    parser.add_argument("--webhook-token", default=os.environ.get("N8N_WEBHOOK_TOKEN"),
+                        help="Token del webhook (o var. de entorno N8N_WEBHOOK_TOKEN)")
 
     args = parser.parse_args()
 
@@ -278,9 +361,11 @@ def main():
         sys.exit(0)
 
     update_corpus(
-        output_dir = output_dir,
-        corpus_dir = corpus_dir,
-        dry_run    = args.dry_run,
+        output_dir    = output_dir,
+        corpus_dir    = corpus_dir,
+        dry_run       = args.dry_run,
+        webhook_url   = args.webhook_url,
+        webhook_token = args.webhook_token,
     )
 
 

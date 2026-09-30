@@ -412,7 +412,9 @@ jobs:
         id: corpus-cache
         uses: actions/cache@v4
         with:
-          path: corpus/
+          path: |
+            corpus/
+            contingencia/
           key: corpus-${{ runner.os }}-${{ github.run_id }}
           restore-keys: corpus-${{ runner.os }}-
 
@@ -429,8 +431,11 @@ jobs:
           ls output/*.csv 2>/dev/null || echo "Sin CSVs"
 
       - name: Construir o actualizar corpus
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
         run: |
-          mkdir -p corpus/
+          mkdir -p corpus/ contingencia/
           if compgen -G "corpus/corpus_observatorio_v*.csv" > /dev/null; then
             echo "Corpus previo encontrado — ejecutando actualizador incremental"
             python corpus_updater.py \

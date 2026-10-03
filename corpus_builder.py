@@ -21,7 +21,12 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
+from output_cleaner import clean_dataframe
+
 CR_TZ = timezone(timedelta(hours=-6))
+
+# Artículos por llamada al webhook de N8N (ver enviar_a_n8n)
+BATCH_SIZE = 200
 
 # Schema v1.0 obligatorio
 REQUIRED_COLUMNS = [
@@ -70,22 +75,58 @@ def _read_csv_safe(path: Path) -> pd.DataFrame | None:
         return None
 
 
-def enviar_a_n8n(df: pd.DataFrame, webhook_url: str, webhook_token: str) -> None:
+def _preparar_registros(df: pd.DataFrame) -> list[dict]:
+    """Limpia los artículos con output_cleaner.clean_dataframe (la misma limpieza
+    de la carga histórica: fechas, HTML, secciones vacías, filas sin título) y
+    arma los registros a enviar. Donde la fecha de publicación no se pudo
+    interpretar (o coincide exactamente con scraping_date) se marca
+    date_source = 'inferido' (Anexo Técnico 3.4); en el resto va None."""
+    cols = df[REQUIRED_COLUMNS]
+    base = cols.astype(object).where(pd.notna(cols), None)
+    limpio, _stats, inferidas = clean_dataframe(base, verbose=False)
+    urls_inferidas = set(inferidas["url"])
+    registros = limpio.to_dict(orient="records")
+    for r in registros:
+        for k, v in r.items():
+            if v == "NULL":
+                r[k] = None
+        inferido = r["url"] in urls_inferidas or r["publication_date"] == r["scraping_date"]
+        r["date_source"] = "inferido" if inferido else None
+    return registros
+
+
+def enviar_a_n8n(df: pd.DataFrame, webhook_url: str, webhook_token: str) -> dict:
     """Envía el corpus a PostgreSQL vía el webhook de N8N (Anexo Técnico 3.7.1).
 
     GitHub Actions y la VM institucional no están en la misma red, así que este
     script (corre en un runner de GitHub Actions) no se conecta directo a
     PostgreSQL. En su lugar, N8N recibe este webhook desde dentro de la red
     interna de la VM, donde sí tiene acceso a la base.
+
+    Se envía en lotes de BATCH_SIZE artículos: un solo POST con miles de
+    artículos supera el tamaño máximo de cuerpo de N8N y el timeout. Si algún
+    lote falla se propaga la excepción y el llamador guarda todo en
+    contingencia/; reenviar lotes ya cargados es inocuo (ON CONFLICT DO NOTHING).
+    Devuelve los totales que reporta N8N (recibidos, insertados, ya_existian, rechazados).
     """
-    registros = df[REQUIRED_COLUMNS].to_dict(orient="records")
-    resp = requests.post(
-        webhook_url,
-        json={"articulos": registros},
-        headers={"X-Webhook-Token": webhook_token},
-        timeout=30,
-    )
-    resp.raise_for_status()
+    registros = _preparar_registros(df)
+    totales = {"recibidos": 0, "insertados": 0, "ya_existian": 0, "rechazados": 0}
+    for i in range(0, len(registros), BATCH_SIZE):
+        resp = requests.post(
+            webhook_url,
+            json={"articulos": registros[i:i + BATCH_SIZE]},
+            headers={"X-Webhook-Token": webhook_token},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        try:
+            respuesta = resp.json()
+        except ValueError:
+            respuesta = None
+        if isinstance(respuesta, dict):
+            for k in totales:
+                totales[k] += int(respuesta.get(k) or 0)
+    return totales
 
 
 def registrar_corrida_parcial(ruta_contingencia: str, error_msg: str) -> None:
@@ -118,8 +159,9 @@ def guardar_corpus_dual(
         return
 
     try:
-        enviar_a_n8n(corpus, webhook_url, webhook_token)
-        _log(f"Corpus enviado a PostgreSQL vía N8N ({len(corpus):,} artículos)")
+        t = enviar_a_n8n(corpus, webhook_url, webhook_token)
+        _log(f"Corpus enviado a PostgreSQL vía N8N: {t['recibidos']:,} recibidos, "
+             f"{t['insertados']:,} nuevos, {t['ya_existian']:,} ya existían, {t['rechazados']:,} rechazados")
     except requests.exceptions.RequestException as e:
         Path("contingencia").mkdir(parents=True, exist_ok=True)
         ruta_contingencia = f"contingencia/{datetime.now(CR_TZ):%Y-%m-%d}_corpus.csv"

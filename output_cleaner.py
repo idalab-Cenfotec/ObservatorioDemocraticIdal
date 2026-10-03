@@ -321,21 +321,33 @@ def strip_html(text: str) -> str:
 # Pipeline de correccion
 # ---------------------------------------------------------------------------
 
-def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) -> dict:
-    print(f"Cargando: {path}")
-    df = load_csv(path)
+def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+    """Aplica la limpieza completa (fechas, HTML, secciones vacías, filas sin
+    título, duplicados) a un DataFrame con el esquema v1.0 y lo devuelve junto
+    con las estadísticas y la lista de fechas inferidas.
+
+    Es la misma lógica que usa fix_file para los CSV; está separada para que el
+    envío diario a PostgreSQL (corpus_builder.py / corpus_updater.py) limpie los
+    artículos nuevos exactamente igual que la carga histórica.
+
+    Los valores faltantes salen como el literal "NULL" (convención del corpus).
+    Retorna (df_limpio, stats, inferred) donde `inferred` lista las URL cuya
+    publication_date se reemplazó por scraping_date.
+    """
+    log = print if verbose else (lambda *args, **kwargs: None)
+    df = df.copy()
     initial_rows = len(df)
     stats: dict = {"initial": initial_rows}
     original_pub = df["publication_date"].copy()
 
     # 1. Normalizar scraping_date
-    print("  Normalizando scraping_date...")
+    log("  Normalizando scraping_date...")
     df["scraping_date"] = df["scraping_date"].apply(
         lambda x: normalize_date(str(x) if x else "")
     )
 
     # 2. Normalizar publication_date usando scraping_date como referencia
-    print("  Normalizando publication_date...")
+    log("  Normalizando publication_date...")
 
     def _norm_pub(row):
         ref = None
@@ -358,7 +370,7 @@ def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) ->
     stats["pub_date_fallback_to_scraping"] = int(null_pub.sum()) - stats["pub_date_set_null"]
 
     # 3. Limpiar HTML
-    print("  Eliminando HTML...")
+    log("  Eliminando HTML...")
     html_stripped: dict = {}
     for col in ("title", "section", "full_text"):
         mask = df[col].astype(str).fillna("").str.contains(HTML_PATTERN, na=False)
@@ -367,19 +379,19 @@ def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) ->
     stats["html_stripped"] = html_stripped
 
     # 4. Rellenar section vacia
-    print("  Completando secciones vacias...")
+    log("  Completando secciones vacias...")
     empty_sec = df["section"].isna() | df["section"].astype(str).str.strip().isin(["", "None", "nan"])
     stats["section_filled"] = int(empty_sec.sum())
     df.loc[empty_sec, "section"] = "Sin seccion"
 
     # 5. Descartar filas sin titulo
-    print("  Descartando filas sin titulo...")
+    log("  Descartando filas sin titulo...")
     no_title = df["title"].isna() | df["title"].astype(str).str.strip().isin(["", "None", "nan"])
     stats["dropped_no_title"] = int(no_title.sum())
     df = df[~no_title].copy()
 
     # 6. Deduplicar por URL
-    print("  Deduplicando por URL...")
+    log("  Deduplicando por URL...")
     before_dedup = len(df)
     df = df.drop_duplicates(subset=["url"], keep="first")
     stats["deduped"] = before_dedup - len(df)
@@ -394,6 +406,15 @@ def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) ->
     # Fechas inferidas: solo las filas que sobrevivieron a la limpieza
     inferred = inferred[inferred["url"].isin(df["url"])]
     stats["pub_date_inferred"] = len(inferred)
+
+    return df, stats, inferred
+
+
+def fix_file(path: Path, output_path: Path, inferred_out: Path | None = None) -> dict:
+    print(f"Cargando: {path}")
+    df = load_csv(path)
+    df, stats, inferred = clean_dataframe(df)
+
     if inferred_out is not None:
         inferred_out.parent.mkdir(parents=True, exist_ok=True)
         inferred.to_csv(inferred_out, sep="|", index=False, encoding="utf-8")

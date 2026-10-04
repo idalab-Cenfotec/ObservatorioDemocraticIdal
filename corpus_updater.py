@@ -25,7 +25,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-from output_cleaner import clean_dataframe
+from output_cleaner import clean_dataframe, url_key
 
 CR_TZ      = timezone(timedelta(hours=-6))
 SEPARATOR  = "|"
@@ -272,7 +272,9 @@ def update_corpus(
     if corpus is None:
         sys.exit(1)
 
-    urls_existentes = set(corpus["url"].dropna().str.strip())
+    # Se compara por url_key (sin www., http/https, barra final): la misma
+    # noticia con la URL escrita distinto no es un artículo nuevo.
+    urls_existentes = set(corpus["url"].dropna().map(url_key))
     _log(f"Artículos en corpus: {len(corpus):,}")
     _log(f"URLs únicas en corpus: {len(urls_existentes):,}")
 
@@ -298,7 +300,7 @@ def update_corpus(
         total_nuevos_brutos += len(df)
 
         # Filtrar solo URLs que no existen en el corpus
-        df_nuevo = df[~df["url"].str.strip().isin(urls_existentes)]
+        df_nuevo = df[~df["url"].fillna("").map(url_key).isin(urls_existentes)]
         duplicados = len(df) - len(df_nuevo)
         total_duplicados += duplicados
 
@@ -320,6 +322,7 @@ def update_corpus(
     # ── 5. Concatenar nuevos con corpus existente ────────────────────────────
     df_nuevos = pd.concat(nuevos_frames, ignore_index=True)
     df_nuevos = df_nuevos.drop_duplicates(subset=["url"], keep="first")
+    df_nuevos = df_nuevos[~df_nuevos["url"].map(url_key).duplicated(keep="first")]
 
     corpus_nuevo = pd.concat([corpus, df_nuevos], ignore_index=True)
     corpus_nuevo = corpus_nuevo.drop_duplicates(subset=["url"], keep="first")

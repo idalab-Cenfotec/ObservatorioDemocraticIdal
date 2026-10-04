@@ -61,6 +61,21 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 MIN_TEXT_LENGTH = 300
 HTML_PATTERN = re.compile(r"<[^>]+>")
 
+_URL_ESQUEMA_WWW = re.compile(r"^https?://(www\.)?")
+_URL_FRAGMENTO = re.compile(r"#.*$")
+_URL_BARRAS_FINALES = re.compile(r"/+$")
+
+
+def url_key(url: str) -> str:
+    """Clave de comparación de URLs: sin http(s)://, sin www., sin #fragmento,
+    sin barras finales y en minúsculas. Es la MISMA expresión del índice único
+    ux_articles_url_norm de PostgreSQL: dos URLs con la misma clave son para la
+    base de datos el mismo artículo (ej. https://www.x.com/nota/ y
+    https://x.com/nota). No altera la URL que se guarda."""
+    u = _URL_ESQUEMA_WWW.sub("", str(url).strip())
+    u = _URL_FRAGMENTO.sub("", u)
+    return _URL_BARRAS_FINALES.sub("", u).lower()
+
 MESES_ES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
     "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,

@@ -21,7 +21,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-from output_cleaner import clean_dataframe
+from output_cleaner import clean_dataframe, url_key
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -245,6 +245,7 @@ def build_corpus(
     # ── 4. Eliminar duplicados por URL ───────────────────────────────────────
     antes      = len(corpus)
     corpus     = corpus.drop_duplicates(subset=["url"], keep="first")
+    corpus     = corpus[~corpus["url"].fillna("").map(url_key).duplicated(keep="first")]
     duplicados = antes - len(corpus)
     _log(f"Duplicados eliminados por URL: {duplicados:,}")
 

@@ -110,6 +110,11 @@ class LegacyScraperAdapter(BaseScraper):
 
         # 4. Leerlo con pandas
         df = self._read_csv(csv_path)
+        if df.empty and self.is_wordpress and self.incremental:
+            # Sitios WordPress en modo incremental: el script deja un CSV solo con
+            # encabezado cuando no hay notas nuevas desde la última corrida.
+            self.logger.info(f"'{self.SOURCE_NAME}': sin notas nuevas desde la última corrida")
+            return []
         if df.empty:
             raise RuntimeError(
                 f"CSV vacío para '{self.SOURCE_NAME}': {csv_path} — "
@@ -289,20 +294,18 @@ def get_legacy_registry() -> dict:
         # ---- Tipo 1: meta-clave que corre todos los sitios WordPress de una vez ----
         "observatorio_democratico":      wordpress_script,
 
-        # ---- Tipo 2: sitios WordPress individuales (19) ----
-        "anexioncr":           wordpress_script,
+        # ---- Tipo 2: sitios WordPress individuales ----
+        # Fuera del registro por estar muertos (DNS caído en julio de 2026, ver
+        # observatorio_democratico.SITES): anexioncr, yambaradio, actualidaddeloeste,
+        # alajuelitahoy; tamarindonews es una página vacía de cPanel.
         "guanacastealaaltura": wordpress_script,
         "periodicomensaje":    wordpress_script,
         "radiolapampa":        wordpress_script,
-        "tamarindonews":       wordpress_script,
-        "yambaradio":          wordpress_script,
         "miprensacr":          wordpress_script,
         "radiopuertotv":       wordpress_script,
         "tvsur":               wordpress_script,
         "ustedseinforma":      wordpress_script,
         "adiariocr":           wordpress_script,
-        "actualidaddeloeste":  wordpress_script,
-        "alajuelitahoy":       wordpress_script,
         "alajuelitasoy":       wordpress_script,
         "buzonderodrigo":      wordpress_script,
         "elcolectivo506":      wordpress_script,

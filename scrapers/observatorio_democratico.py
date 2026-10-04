@@ -33,6 +33,12 @@ import urllib3
 # Disable SSL warnings for pages with misconfigured certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Modo incremental: misma clave de URL que PostgreSQL y que BaseScraper
+# (output_cleaner.url_key). El script corre como subproceso, así que se agrega
+# la raíz del repo al path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from output_cleaner import url_key
+
 # =========================================================
 # CONFIGURACIÓN MAESTRA
 # =========================================================
@@ -129,6 +135,29 @@ def parse_date(date_str):
     except:
         return datetime.datetime.now(TZ_CR).strftime('%Y-%m-%d %H:%M:%S')
 
+def cargar_urls_conocidas(source):
+    """
+    Pide a N8N (GET ?source=<fuente>) las URLs normalizadas que ya están en
+    PostgreSQL, igual que BaseScraper._cargar_urls_conocidas. Devuelve un set, o
+    None si no hay variables N8N_URLS_CONOCIDAS_URL / N8N_WEBHOOK_TOKEN o si N8N
+    no responde: en ese caso el script descarga todo, como siempre.
+    """
+    url = os.environ.get("N8N_URLS_CONOCIDAS_URL")
+    token = os.environ.get("N8N_WEBHOOK_TOKEN")
+    if not url or not token:
+        return None
+    try:
+        r = requests.get(url, params={"source": source}, headers={"X-Webhook-Token": token}, timeout=(10, 120))
+        r.raise_for_status()
+        urls = r.json()["urls"]
+        if not isinstance(urls, list):
+            raise ValueError("'urls' no es una lista")
+        return set(urls)
+    except Exception as e:
+        log_msg(f"-> No se pudo obtener la lista de URLs conocidas, se descarga todo ({e})")
+        return None
+
+
 def procesar_sitio(site_dict, max_pages=None):
     base_url = site_dict["url"]
     name = site_dict["name"]
@@ -148,13 +177,29 @@ def procesar_sitio(site_dict, max_pages=None):
         "Connection": "keep-alive",
     })
 
+    # Modo incremental y tope de tiempo (mismo contrato que BaseScraper):
+    #  - known: URLs ya cargadas en PostgreSQL (None = descargar todo, como antes)
+    #  - SCRAPER_MODO_COMPLETO=1: recorre todo el historial pero sigue omitiendo lo ya cargado
+    #  - SCRAPER_MAX_MINUTOS: al agotarse se guarda lo reunido hasta ese momento
+    known = cargar_urls_conocidas(name)
+    modo_completo = os.environ.get("SCRAPER_MODO_COMPLETO") == "1"
+    max_min = float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None
+    t_fin = time.monotonic() + max_min * 60 if max_min else None
+    if known is not None:
+        log_msg(f"-> Modo {'completo (sin cortar)' if modo_completo else 'incremental'}: {len(known):,} URLs ya conocidas")
+
     # Auto-detect API route: modern /wp-json/ or legacy /?rest_route=
     legacy_mode = False
 
     def _probe_is_wp_json(url):
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 r = session.get(url, timeout=15, verify=False)
+                if r.status_code in (429, 503):
+                    # Límite de frecuencia del hosting (p. ej. elcolectivo506): esperar y reintentar
+                    log_msg(f"   [probe {attempt+1}/4] HTTP {r.status_code}, esperando 20s...")
+                    time.sleep(20)
+                    continue
                 if r.status_code != 200:
                     return False
                 if not r.content:
@@ -188,12 +233,14 @@ def procesar_sitio(site_dict, max_pages=None):
         else:
             return f"{base_url}/wp-json{path}"
 
-    def _safe_get(url, params=None, timeout=45, retries=3):
+    def _safe_get(url, params=None, timeout=45, retries=5):
         for attempt in range(retries):
             try:
                 r = session.get(url, params=(params if not legacy_mode else None), timeout=timeout, verify=False)
                 if r.status_code in (429, 503):
-                    wait = 15 * (2 ** attempt)
+                    wait = min(20 * (attempt + 1), 60)
+                    if t_fin and time.monotonic() + wait > t_fin:
+                        return r   # sin tiempo para esperar: se devuelve el 429 y el sitio se corta
                     log_msg(f"   [retry {attempt+1}/{retries}] HTTP {r.status_code}, esperando {wait}s...")
                     time.sleep(wait)
                     continue
@@ -227,8 +274,12 @@ def procesar_sitio(site_dict, max_pages=None):
     dataset = []
     page = 1
     posts_url = _api_url("/wp/v2/posts")
+    conocidas_seguidas = 0
 
     while True:
+        if t_fin and time.monotonic() > t_fin:
+            log_msg(f"-> Tope de tiempo alcanzado ({max_min:g} min): se guarda lo reunido hasta ahora.")
+            break
         try:
             if legacy_mode:
                 page_url = f"{base_url}/?rest_route=/wp/v2/posts&per_page=100&page={page}"
@@ -247,8 +298,12 @@ def procesar_sitio(site_dict, max_pages=None):
             if not data:
                 break
 
+            n_conocidos_pagina = 0
             for post in data:
                 link = post.get("link", "")
+                if known is not None and url_key(link) in known:
+                    n_conocidos_pagina += 1
+                    continue
                 title_raw = post.get("title", {}).get("rendered", "")
                 content_raw = post.get("content", {}).get("rendered", "")
                 date_raw = post.get("date", "")
@@ -275,7 +330,15 @@ def procesar_sitio(site_dict, max_pages=None):
                     "language": "es"
                 })
 
-            log_msg(f"-> [{name}] Pagina {page} extraida (+{len(data)} items)")
+            log_msg(f"-> [{name}] Pagina {page} extraida (+{len(data)} items, {n_conocidos_pagina} ya conocidos)")
+
+            # Modo incremental: las páginas vienen de la más nueva a la más vieja;
+            # al llegar a 2 páginas seguidas solo con notas ya cargadas, el resto también lo está.
+            if known is not None and not modo_completo:
+                conocidas_seguidas = conocidas_seguidas + 1 if n_conocidos_pagina == len(data) else 0
+                if conocidas_seguidas >= 2:
+                    log_msg("-> 2 páginas seguidas con solo notas ya cargadas: fin (modo incremental).")
+                    break
 
             # Respaldo de seguridad intermedio local
             if page % 10 == 0:
@@ -313,6 +376,16 @@ def procesar_sitio(site_dict, max_pages=None):
             files.download(final_filename)
         except ImportError:
             pass
+
+    elif known is not None and page > 1:
+        # Modo incremental: ninguna nota nueva desde la última corrida no es un error.
+        # Se deja un CSV solo con el encabezado para que el adaptador sepa que el
+        # script corrió bien (si la API no respondió, page vale 1 y cae al WARNING).
+        final_filename = os.path.join("output", f"{name}_{datetime.datetime.now(TZ_CR).strftime('%Y%m%d')}.csv")
+        pd.DataFrame(columns=['source', 'url', 'title', 'publication_date', 'scraping_date',
+                              'section', 'full_text', 'language']).to_csv(
+            final_filename, index=False, encoding='utf-8-sig', sep='|')
+        log_msg(f"SUCCESS: sin notas nuevas para {name} (0 registros) → {final_filename}")
 
     else:
         log_msg(f"WARNING: API vacía o inalcanzable para {name}.")

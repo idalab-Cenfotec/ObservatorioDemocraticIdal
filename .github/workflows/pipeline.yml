@@ -14,7 +14,7 @@ on:
         required: false
         default: 'false'
       modo_completo:
-        description: 'Grupos 1-4: recorrer el listado completo (no cortar al llegar a lo ya cargado) para traer lo atrasado (true/false)'
+        description: 'Grupos 1-5: recorrer el listado completo (no cortar al llegar a lo ya cargado) para traer lo atrasado (true/false)'
         required: false
         default: 'false'
 
@@ -303,11 +303,17 @@ jobs:
         run: pip install -r requirements-legacy.txt
 
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          # El adaptador legacy corta cada sitio a los 600 s; el tope va por debajo para guardar lo reunido
+          SCRAPER_MAX_MINUTOS: '8'
         run: |
           python pipeline_runner.py \
             --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
                    miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
-                   elcolectivo506 eljornalcr \
+                   elcolectivo506 \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}

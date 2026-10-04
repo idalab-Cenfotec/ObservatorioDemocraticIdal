@@ -11,7 +11,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import requests
 from langdetect import detect, LangDetectException
+
+from output_cleaner import url_key
 
 
 # Zona horaria Costa Rica (UTC-6)
@@ -71,6 +74,36 @@ def get_scraping_date() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
+class CorteIncremental:
+    """
+    Decide cuándo dejar de paginar una sección en modo incremental: después de
+    `limite` páginas seguidas cuyas URLs ya son todas conocidas (los listados
+    van de lo más nuevo a lo más viejo). En modo completo nunca corta.
+
+    Uso en el ciclo de paginación de un scraper:
+        corte = CorteIncremental(self)
+        while ...:
+            urls_pagina = [...]
+            if corte.pagina(urls_pagina):
+                break
+    """
+
+    def __init__(self, scraper: "BaseScraper", limite: int = 3):
+        self.scraper = scraper
+        self.limite = limite
+        self.seguidas = 0
+
+    def pagina(self, urls: list[str]) -> bool:
+        """Registra las URLs de una página y devuelve True si hay que dejar de paginar."""
+        if not self.scraper.incremental or not urls:
+            return False
+        if all(self.scraper.es_conocida(u) for u in urls):
+            self.seguidas += 1
+        else:
+            self.seguidas = 0
+        return self.seguidas >= self.limite
+
+
 class BaseScraper(ABC):
     """
     Clase base abstracta para todos los scrapers del Observatorio Democrático.
@@ -101,6 +134,62 @@ class BaseScraper(ABC):
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+        # Modo incremental: URLs que ya están en PostgreSQL (ver _cargar_urls_conocidas)
+        self.known_keys: set[str] = set()
+        self.incremental = False
+        self.omitidos_conocidos = 0
+        self._cargar_urls_conocidas()
+
+    # ------------------------------------------------------------------
+    # Modo incremental
+    # ------------------------------------------------------------------
+
+    def _cargar_urls_conocidas(self) -> None:
+        """
+        Pide a N8N (GET ?source=<SOURCE_NAME>) las URLs normalizadas de esta
+        fuente que ya están en la base de datos. Con ellas el scraper puede
+        saltarse los artículos ya cargados y dejar de paginar (es_conocida,
+        debe_omitir, CorteIncremental).
+
+        Variables de entorno: N8N_URLS_CONOCIDAS_URL y N8N_WEBHOOK_TOKEN.
+        Cualquier problema (sin variables, N8N caído, respuesta inválida) deja
+        el scraper en modo completo, que es el comportamiento de siempre.
+        SCRAPER_MODO_COMPLETO=1 fuerza el modo completo (para el rastreo
+        periódico del archivo entero).
+        """
+        if os.environ.get("SCRAPER_MODO_COMPLETO") == "1":
+            self.logger.info("Modo completo forzado (SCRAPER_MODO_COMPLETO=1)")
+            return
+        url = os.environ.get("N8N_URLS_CONOCIDAS_URL")
+        token = os.environ.get("N8N_WEBHOOK_TOKEN")
+        if not url or not token:
+            self.logger.info("Modo completo: sin N8N_URLS_CONOCIDAS_URL / N8N_WEBHOOK_TOKEN")
+            return
+        try:
+            resp = requests.get(url, params={"source": self.SOURCE_NAME},
+                                headers={"X-Webhook-Token": token}, timeout=(10, 120))
+            resp.raise_for_status()
+            urls = resp.json()["urls"]
+            if not isinstance(urls, list):
+                raise ValueError("'urls' no es una lista")
+        except Exception as e:
+            self.logger.warning(f"Modo completo: no se pudo obtener la lista de URLs conocidas ({e})")
+            return
+        self.known_keys = set(urls)
+        self.incremental = True
+        self.logger.info(f"Modo incremental: {len(self.known_keys):,} URLs ya conocidas de {self.SOURCE_NAME}")
+
+    def es_conocida(self, url: str) -> bool:
+        """True si el artículo ya está en la base (compara por url_key, no por texto exacto)."""
+        return self.incremental and url_key(url) in self.known_keys
+
+    def debe_omitir(self, url: str) -> bool:
+        """es_conocida + cuenta el artículo como omitido, para el resumen de la corrida."""
+        if self.es_conocida(url):
+            self.omitidos_conocidos += 1
+            return True
+        return False
 
     @abstractmethod
     def scrape(self) -> list[dict]:
@@ -252,6 +341,8 @@ class BaseScraper(ABC):
             "total_valid": len(valid),
             "total_discarded": len(discarded),
             "output_file": output_file,
+            "modo": "incremental" if self.incremental else "completo",
+            "omitidos_conocidos": self.omitidos_conocidos,
         }
 
         self.logger.info(f"=== Scraper finalizado: {self.SOURCE_NAME} | Resumen: {summary} ===")

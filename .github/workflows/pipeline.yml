@@ -13,6 +13,10 @@ on:
         description: 'Modo prueba (true/false)'
         required: false
         default: 'false'
+      modo_completo:
+        description: 'Grupos 1-4: recorrer el listado completo (no cortar al llegar a lo ya cargado) para traer lo atrasado (true/false)'
+        required: false
+        default: 'false'
 
 env:
   PYTHON_VERSION: '3.12'
@@ -61,6 +65,11 @@ jobs:
           python -m playwright install-deps chromium
 
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          SCRAPER_MAX_MINUTOS: '45'
         run: |
           python pipeline_runner.py \
             --only presidencia elperiodicocr sinartdigital monumental \
@@ -121,6 +130,11 @@ jobs:
           python -m playwright install-deps chromium
 
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          SCRAPER_MAX_MINUTOS: '90'
         run: |
           python pipeline_runner.py \
             --only ncrnoticias ticotimes trivisioncr latejacr \
@@ -180,6 +194,11 @@ jobs:
           python -m playwright install-deps chromium
 
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          SCRAPER_MAX_MINUTOS: '120'
         run: |
           python pipeline_runner.py \
             --only lareaccioncr noticiasenlineacr puroperiodismo \
@@ -239,6 +258,11 @@ jobs:
           python -m playwright install-deps chromium
 
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          SCRAPER_MAX_MINUTOS: '150'
         run: |
           python pipeline_runner.py \
             --only teletica repretel genteopa \

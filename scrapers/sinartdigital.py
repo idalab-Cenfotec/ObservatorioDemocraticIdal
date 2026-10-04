@@ -35,7 +35,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -205,7 +205,12 @@ class SinartDigitalScraper(BaseScraper):
             # PASO 2: Visitar cada artículo
             # -------------------------------------------------------
             records = []
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
 
             if self.test_mode:
                 max_arts = TEST_MAX_ARTICLES * TEST_MAX_SECTIONS
@@ -213,6 +218,8 @@ class SinartDigitalScraper(BaseScraper):
                 self.logger.info(f"Modo prueba: procesando {len(links_list)} artículos")
 
             for i, link_data in enumerate(links_list):
+                if self.tiempo_agotado():
+                    break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
                 record = await self._scrape_article(context, link_data)
                 if record:
@@ -236,8 +243,12 @@ class SinartDigitalScraper(BaseScraper):
         collected = {}
         page_num = 1
         max_pages = TEST_MAX_PAGES if self.test_mode else 9999
+        corte = CorteIncremental(self)
 
         while page_num <= max_pages:
+            if self.tiempo_agotado(0.5):
+                self.logger.warning(f"  [{section_name}] Tiempo del listado agotado, se pasa a los artículos")
+                break
             url = (
                 base_url
                 if page_num == 1
@@ -256,12 +267,18 @@ class SinartDigitalScraper(BaseScraper):
                 await page.wait_for_timeout(1500)
                 await self._scroll_to_bottom(page)
 
+                n_antes = len(collected)
                 found_on_page = await self._extract_cards(page, collected, section_name)
 
                 self.logger.debug(
                     f"  [{section_name}] Pág {page_num}: "
                     f"{found_on_page} nuevos | total: {len(collected)}"
                 )
+
+                # Varias páginas seguidas con solo URLs ya cargadas → fin de sección
+                if corte.pagina([l["url"] for l in list(collected.values())[n_antes:]]):
+                    self.logger.info(f"  [{section_name}] Pág {page_num}: solo URLs ya conocidas, fin de sección")
+                    break
 
                 # Sin artículos en la página → fin de sección
                 if found_on_page == 0:

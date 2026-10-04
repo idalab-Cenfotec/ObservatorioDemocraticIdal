@@ -6,6 +6,7 @@ Implementa la lógica común: exportación CSV, validación de schema, logs.
 
 import os
 import csv
+import time
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
@@ -95,7 +96,7 @@ class CorteIncremental:
 
     def pagina(self, urls: list[str]) -> bool:
         """Registra las URLs de una página y devuelve True si hay que dejar de paginar."""
-        if not self.scraper.incremental or not urls:
+        if not self.scraper.cortar_paginacion or not urls:
             return False
         if all(self.scraper.es_conocida(u) for u in urls):
             self.seguidas += 1
@@ -137,8 +138,16 @@ class BaseScraper(ABC):
 
         # Modo incremental: URLs que ya están en PostgreSQL (ver _cargar_urls_conocidas)
         self.known_keys: set[str] = set()
-        self.incremental = False
+        self.incremental = False          # hay lista de URLs conocidas -> se omiten los artículos ya cargados
+        self.cortar_paginacion = False    # además, se deja de paginar al llegar a lo ya conocido
         self.omitidos_conocidos = 0
+
+        # Tope de tiempo (SCRAPER_MAX_MINUTOS): al agotarse, el scraper deja de
+        # visitar artículos y devuelve lo reunido hasta ese momento.
+        self.max_minutos = float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None
+        self._t0 = time.monotonic()
+        self.tope_alcanzado = False
+
         self._cargar_urls_conocidas()
 
     # ------------------------------------------------------------------
@@ -154,17 +163,15 @@ class BaseScraper(ABC):
 
         Variables de entorno: N8N_URLS_CONOCIDAS_URL y N8N_WEBHOOK_TOKEN.
         Cualquier problema (sin variables, N8N caído, respuesta inválida) deja
-        el scraper en modo completo, que es el comportamiento de siempre.
-        SCRAPER_MODO_COMPLETO=1 fuerza el modo completo (para el rastreo
-        periódico del archivo entero).
+        el scraper como siempre: recorre todo y abre todos los artículos.
+        SCRAPER_MODO_COMPLETO=1 recorre el listado completo (no corta la
+        paginación, útil para traer lo atrasado) pero sigue abriendo solo los
+        artículos que no están en la base.
         """
-        if os.environ.get("SCRAPER_MODO_COMPLETO") == "1":
-            self.logger.info("Modo completo forzado (SCRAPER_MODO_COMPLETO=1)")
-            return
         url = os.environ.get("N8N_URLS_CONOCIDAS_URL")
         token = os.environ.get("N8N_WEBHOOK_TOKEN")
         if not url or not token:
-            self.logger.info("Modo completo: sin N8N_URLS_CONOCIDAS_URL / N8N_WEBHOOK_TOKEN")
+            self.logger.info("Sin lista de URLs conocidas (falta N8N_URLS_CONOCIDAS_URL / N8N_WEBHOOK_TOKEN): se abren todos los artículos")
             return
         try:
             resp = requests.get(url, params={"source": self.SOURCE_NAME},
@@ -174,11 +181,30 @@ class BaseScraper(ABC):
             if not isinstance(urls, list):
                 raise ValueError("'urls' no es una lista")
         except Exception as e:
-            self.logger.warning(f"Modo completo: no se pudo obtener la lista de URLs conocidas ({e})")
+            self.logger.warning(f"No se pudo obtener la lista de URLs conocidas, se abren todos los artículos ({e})")
             return
         self.known_keys = set(urls)
         self.incremental = True
-        self.logger.info(f"Modo incremental: {len(self.known_keys):,} URLs ya conocidas de {self.SOURCE_NAME}")
+        self.cortar_paginacion = os.environ.get("SCRAPER_MODO_COMPLETO") != "1"
+        self.logger.info(
+            f"Modo {'incremental' if self.cortar_paginacion else 'completo (sin cortar paginación)'}: "
+            f"{len(self.known_keys):,} URLs ya conocidas de {self.SOURCE_NAME}")
+
+    def tiempo_agotado(self, fraccion: float = 1.0) -> bool:
+        """
+        True si ya se gastó `fraccion` del tope de tiempo (SCRAPER_MAX_MINUTOS).
+        Sin tope configurado nunca es True. Los scrapers lo consultan antes de
+        cada página del listado (con fraccion=0.5, para dejar tiempo a los
+        artículos) y antes de cada artículo (fraccion=1.0).
+        """
+        if not self.max_minutos:
+            return False
+        if time.monotonic() - self._t0 >= self.max_minutos * 60 * fraccion:
+            if fraccion >= 1.0 and not self.tope_alcanzado:
+                self.tope_alcanzado = True
+                self.logger.warning(f"Tope de tiempo alcanzado ({self.max_minutos:g} min): se devuelve lo reunido hasta ahora")
+            return True
+        return False
 
     def es_conocida(self, url: str) -> bool:
         """True si el artículo ya está en la base (compara por url_key, no por texto exacto)."""
@@ -312,6 +338,7 @@ class BaseScraper(ABC):
         """
         self.logger.info(f"=== Iniciando scraper: {self.SOURCE_NAME} ===")
         self.logger.info(f"URL base: {self.BASE_URL}")
+        self._t0 = time.monotonic()   # el tope de tiempo cuenta desde que arranca la corrida, no desde el __init__
 
         try:
             raw = self.scrape()
@@ -341,8 +368,9 @@ class BaseScraper(ABC):
             "total_valid": len(valid),
             "total_discarded": len(discarded),
             "output_file": output_file,
-            "modo": "incremental" if self.incremental else "completo",
+            "modo": "incremental" if self.cortar_paginacion else ("completo" if self.incremental else "sin_lista"),
             "omitidos_conocidos": self.omitidos_conocidos,
+            "tope_alcanzado": self.tope_alcanzado,
         }
 
         self.logger.info(f"=== Scraper finalizado: {self.SOURCE_NAME} | Resumen: {summary} ===")

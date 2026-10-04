@@ -29,7 +29,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -177,11 +177,18 @@ class LaReaccionCRScraper(BaseScraper):
             # PASO 3: Visitar cada artículo y extraer texto completo
             # -------------------------------------------------------
             records = []
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
             if self.test_mode:
                 links_list = links_list[:TEST_MAX_ARTICLES]
 
             for i, link_data in enumerate(links_list):
+                if self.tiempo_agotado():
+                    break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
                 record = await self._scrape_article(context, link_data)
                 if record:
@@ -245,8 +252,12 @@ class LaReaccionCRScraper(BaseScraper):
         """
         collected = []
         page_num = 1
+        corte = CorteIncremental(self)
 
         while True:
+            if self.tiempo_agotado(0.5):
+                self.logger.warning(f"Tiempo del listado agotado en {base_listing_url}, se pasa a los artículos")
+                break
             if page_num == 1:
                 url = base_listing_url
             else:
@@ -270,6 +281,7 @@ class LaReaccionCRScraper(BaseScraper):
                 # Extraer desde artículos (tema ColorMag)
                 # Selector: article (elementos principales)
                 # -----------------------------------------------------------
+                n_antes = len(collected)
                 articles = await page.query_selector_all("article")
                 for art in articles:
                     try:
@@ -320,6 +332,11 @@ class LaReaccionCRScraper(BaseScraper):
 
                 # Si no encontramos nada en esta página, terminamos
                 if found_on_page == 0:
+                    break
+
+                # Varias páginas seguidas con solo URLs ya cargadas -> fin del listado
+                if corte.pagina([l["url"] for l in collected[n_antes:]]):
+                    self.logger.info(f"  Página {page_num} de {base_listing_url}: solo URLs ya conocidas, fin del listado")
                     break
 
                 page_num += 1

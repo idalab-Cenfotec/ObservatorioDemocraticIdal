@@ -38,7 +38,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -169,7 +169,12 @@ class TicoTimesScraper(BaseScraper):
             # PASO 2: Visitar cada artículo
             # -------------------------------------------------------
             records = []
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
 
             if self.test_mode:
                 max_arts = TEST_MAX_ARTICLES * TEST_MAX_SECTIONS
@@ -177,6 +182,8 @@ class TicoTimesScraper(BaseScraper):
                 self.logger.info(f"Modo prueba: procesando {len(links_list)} artículos")
 
             for i, link_data in enumerate(links_list):
+                if self.tiempo_agotado():
+                    break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
                 record = await self._scrape_article(context, link_data)
                 if record:
@@ -214,7 +221,11 @@ class TicoTimesScraper(BaseScraper):
             await self._extract_cards(page, collected, section_name)
 
             click_count = 0
+            corte = CorteIncremental(self)
             while click_count <= max_clicks:
+                if self.tiempo_agotado(0.5):
+                    self.logger.warning(f"  [{section_name}] Tiempo del listado agotado, se pasa a los artículos")
+                    break
                 prev_count = len(collected)
 
                 # Scroll suave hasta encontrar el botón "Load more"
@@ -232,6 +243,11 @@ class TicoTimesScraper(BaseScraper):
                 # Extraer artículos nuevos
                 await self._extract_cards(page, collected, section_name)
                 new_this_round = len(collected) - prev_count
+
+                # Varias rondas seguidas con solo URLs ya cargadas -> fin de sección
+                if corte.pagina([l["url"] for l in list(collected.values())[prev_count:]]):
+                    self.logger.info(f"  [{section_name}] Clic {click_count}: solo URLs ya conocidas, fin de sección")
+                    break
 
                 self.logger.debug(
                     f"  [{section_name}] Clic {click_count}: "

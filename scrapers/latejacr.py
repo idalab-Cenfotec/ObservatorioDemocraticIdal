@@ -34,7 +34,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -165,11 +165,18 @@ class LaTejaCRScraper(BaseScraper):
             # PASO 2: Visitar cada artículo
             # -------------------------------------------------------
             records = []
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
             if self.test_mode:
                 links_list = links_list[:TEST_MAX_ARTICLES]
 
             for i, link_data in enumerate(links_list):
+                if self.tiempo_agotado():
+                    break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
                 record = await self._scrape_article(context, link_data)
                 if record:
@@ -300,8 +307,13 @@ class LaTejaCRScraper(BaseScraper):
             await page.goto(section_url, wait_until="domcontentloaded", timeout=30_000)
             await page.wait_for_timeout(2500)
 
+            corte = CorteIncremental(self)
             for scroll_num in range(max_scrolls):
+                if self.tiempo_agotado(0.5):
+                    self.logger.warning(f"  [{section_name}] Tiempo del listado agotado, se pasa a los artículos")
+                    break
                 # --- Extraer artículos actualmente visibles ---
+                n_antes = len(collected)
                 links_data = await self._extract_story_links(page)
                 for item in links_data:
                     url = item.get("url", "")
@@ -312,6 +324,11 @@ class LaTejaCRScraper(BaseScraper):
                             "section": section_name,
                             "publication_date": "",
                         }
+
+                # Varios scrolls seguidos con solo URLs ya cargadas -> fin de sección
+                if corte.pagina([l["url"] for l in list(collected.values())[n_antes:]]):
+                    self.logger.info(f"  [{section_name}] Scroll {scroll_num + 1}: solo URLs ya conocidas, fin de sección")
+                    break
 
                 if self.test_mode and len(collected) >= TEST_MAX_ARTICLES:
                     self.logger.debug(

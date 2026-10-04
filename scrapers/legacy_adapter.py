@@ -263,7 +263,8 @@ def get_legacy_registry() -> dict:
 
     _registry_cache = {
         # ---- Tipo 1: scripts procedurales Colab (24) ----
-        "acontecercr":                   os.path.join(scrapers_dir, "acontecercr.py"),
+        # acontecercr (scrapers/acontecercr.py) era un duplicado de acontecer_cr: ambos
+        # escriben acontecercr_<fecha>.csv y, al correr en paralelo, se pisaban el archivo.
         "acontecer_cr":                  os.path.join(scrapers_dir, "acontecer_cr.py"),
         "alajuela_digital":              os.path.join(scrapers_dir, "alajuela_digital.py"),
         "amprensa":                      os.path.join(scrapers_dir, "amprensa.py"),

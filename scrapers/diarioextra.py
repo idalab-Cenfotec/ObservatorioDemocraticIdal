@@ -94,6 +94,10 @@ def extract_article_data(soup, url):
     # --- Contenido ---
     content = "Contenido no encontrado"
     content_div = soup.find('div', class_='single-layout__article')
+    if not content_div:
+        # Una petición sin JavaScript (requests) recibe la versión sin scripts de la
+        # página, donde el cuerpo vive en div.noscript__content (con JS es el de arriba).
+        content_div = soup.find('div', class_='noscript__content')
 
     if content_div:
         for tag in content_div.find_all(['script', 'style', 'iframe', 'ins', 'figure', 'blockquote']):

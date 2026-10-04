@@ -82,6 +82,10 @@ def _cls_tokens(el) -> set:
 
 def _parse_fecha_articulo(soup) -> str:
     """Extrae la fecha de la página del artículo en larepublica.net."""
+    # Sitio actual: meta ISO 8601 (la normaliza output_cleaner a hora de Costa Rica)
+    meta = soup.select_one("meta[property='article:published_time']")
+    if meta and meta.get("content"):
+        return meta["content"].strip()
     date_div = soup.select_one("div.date")
     if not date_div:
         return "Sin fecha"
@@ -147,22 +151,20 @@ def scrape_lista_noticias(url: str) -> list[dict]:
     Extrae título, enlace, autor, fecha y sección
     de cada noticia en la portada de larepublica.net.
 
-    La República usa WordPress clásico.
-    Las URLs de noticias tienen el patrón /noticia/<slug>.
+    Sitio actual: cada nota de la portada es un
+    <h2 class="post_headline"><a href="https://www.larepublica.net/<slug>/">.
+    (Antes las URLs eran /noticia/<slug> y el patrón ya no coincide con nada.)
     """
     soup = get_soup(url)
     vistos = set()
     noticias = []
 
-    patron_noticia = re.compile(r"https://www\.larepublica\.net/noticia/.+")
+    # Una sola ruta (/<slug>/); las secciones y especiales tienen más segmentos
+    patron_noticia = re.compile(r"https://www\.larepublica\.net/[a-z0-9][a-z0-9-]*/?$")
 
-    for a in soup.find_all("a", href=True):
+    for a in soup.select("h1.post_headline a[href], h2.post_headline a[href], h3.post_headline a[href]"):
         href   = a["href"]
         enlace = abs_url(href)
-
-        # Normalizar: asegurar que termine sin barra doble
-        if href.startswith("/noticia/"):
-            enlace = "https://www.larepublica.net" + href
 
         if not patron_noticia.match(enlace):
             continue
@@ -180,19 +182,18 @@ def scrape_lista_noticias(url: str) -> list[dict]:
             continue
 
         vistos.add(enlace)
-        contenedor = a.find_parent(["article", "div"]) or a
+        contenedor = a.find_parent("article") or a.find_parent("div") or a
 
         # ── Fecha ────────────────────────────────────────────────────
-        fecha_tag = (contenedor.select_one("time[datetime]") or
-                     contenedor.select_one("span[class*='date']") or
-                     contenedor.select_one("time"))
-        if fecha_tag:
-            fecha = fecha_tag.get("datetime", "") or fecha_tag.get_text(strip=True)
-        else:
-            fecha = "Sin fecha"
+        # La tarjeta solo trae "Oct 03, 2026" (mes en inglés, sin hora): se deja
+        # "Sin fecha" para que scraper_completo use la fecha ISO de la página
+        # del artículo (meta article:published_time).
+        fecha_tag = contenedor.select_one("time[datetime]")
+        fecha = fecha_tag.get("datetime", "") if fecha_tag else "Sin fecha"
 
         # ── Sección ──────────────────────────────────────────────────
-        seccion_tag = contenedor.select_one("a[href*='/seccion/']")
+        seccion_tag = (contenedor.select_one("a[href*='/editorial/']") or
+                       contenedor.select_one("a[href*='/seccion/']"))
         if seccion_tag:
             seccion = seccion_tag.get_text(strip=True).title()
         else:
@@ -234,6 +235,7 @@ def scrape_texto_articulo(url: str) -> tuple[str, str]:
     fecha = _parse_fecha_articulo(soup)
 
     SELECTORES = [
+        "div.post_body-container",   # sitio actual
         "div.entry-content",
         "div.td-post-content",
         "div[class*='post-content']",
@@ -269,7 +271,7 @@ def scraper_completo(url: str) -> list[dict]:
         try:
             full_text, art_date = scrape_texto_articulo(n["url"])
             n["full_text"] = full_text
-            if n["publication_date"] == "Sin fecha":
+            if art_date != "Sin fecha":   # la fecha de la página del artículo es la más precisa
                 n["publication_date"] = art_date
         except Exception as e:
             n["full_text"] = f"Error al extraer: {e}"

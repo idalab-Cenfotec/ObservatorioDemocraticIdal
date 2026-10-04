@@ -97,7 +97,7 @@ docker run --rm observatorio --only elperiodicocr
 ### Ejecutar varios scrapers
 
 ```bash
-docker run --rm observatorio --only elperiodicocr acontecercr
+docker run --rm observatorio --only elperiodicocr acontecer_cr
 ```
 
 ### Ejecutar en modo prueba Solo para los scrapers de Ali

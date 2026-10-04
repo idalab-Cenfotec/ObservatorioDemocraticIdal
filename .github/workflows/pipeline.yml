@@ -353,7 +353,7 @@ jobs:
       - name: Ejecutar scrapers
         run: |
           python pipeline_runner.py \
-            --only acontecer_cr acontecercr alajuela_digital amprensa \
+            --only acontecer_cr alajuela_digital amprensa \
                    crc_89_1 crhoy diarioextra digital506 \
                    el_jilguero el_jornal el_observador el_sol_de_occidente \
             --workers 8 \

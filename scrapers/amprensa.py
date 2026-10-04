@@ -118,7 +118,10 @@ def extract_article_data(soup, url):
     # <div class="post-meta-date"><i class="fa fa-calendar"></i>13 de Abril de 2026</div>
     date = "Sin fecha"
     date_div = soup.find('div', class_='post-meta-date')
-    if date_div:
+    meta_fecha = soup.find('meta', attrs={'property': 'article:published_time'})
+    if meta_fecha and meta_fecha.get('content'):
+        date = meta_fecha['content'].strip()   # ISO 8601, lo normaliza output_cleaner
+    elif date_div:
         date = clean_text(date_div.get_text())
     else:
         # Buscar en small.day
@@ -177,25 +180,13 @@ def get_article_links(soup):
 
 def get_section_links(category_slug, session):
     """
-    Pagina el endpoint htmx de una categoría hasta que una página no
-    devuelva enlaces nuevos (fin del listado) o se alcance MAX_PAGES_PER_SECTION.
+    Enlaces de una categoría. El fragmento htmx /webcomponents/news-category-table
+    que se usaba antes ya responde 204 (vacío) y el sitio no expone otra paginación:
+    la página /categorias/<slug> trae renderizadas las 12 notas más recientes de la
+    categoría, que es lo que necesita una corrida diaria.
     """
-    section_links = []
-    for page in range(1, MAX_PAGES_PER_SECTION + 1):
-        url = (f"{BASE_URL}/webcomponents/news-category-table"
-               f"?category_slug={category_slug}&page={page}&limit={ARTICLES_PER_CATEGORY_PAGE}")
-        soup = get_soup(url, session)
-        if not soup:
-            break
-
-        page_links = get_article_links(soup)
-        if not page_links:
-            break
-
-        section_links.extend(page_links)
-        time.sleep(DELAY)
-
-    return section_links
+    soup = get_soup(f"{BASE_URL}/categorias/{category_slug}", session)
+    return get_article_links(soup) if soup else []
 
 # -------------------------------------------------------
 # PASO 1: Leer cada sección vía el endpoint htmx → extraer enlaces

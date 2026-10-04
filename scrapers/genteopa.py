@@ -218,6 +218,9 @@ class GenteOPAScraper(BaseScraper):
                 if resp and resp.status == 404:
                     self.logger.debug(f"  [{section_name}] Pág {page_num} → 404, fin")
                     break
+                if resp and resp.status >= 400:
+                    self.logger.warning(f"  [{section_name}] HTTP {resp.status} en {url} (posible bloqueo del sitio)")
+                    break
 
                 await page.wait_for_timeout(1500)
                 await self._scroll_to_bottom(page)

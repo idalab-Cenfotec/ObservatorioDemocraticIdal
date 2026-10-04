@@ -263,7 +263,7 @@ class TrivisionCRScraper(BaseScraper):
 
                 try:
                     await page.wait_for_selector(
-                        "div[id^='dv25-pc-'], div.dv25-pc-wrap",
+                        "div[id^='dv25-pc-'], div.dv25-pc-wrap, a.dv25-ng-card",
                         timeout=10_000
                     )
                 except Exception:
@@ -284,7 +284,7 @@ class TrivisionCRScraper(BaseScraper):
                 if found_on_page == 0:
                     # Verificar si hay tarjetas en la página
                     all_cards = await page.query_selector_all(
-                        "div[id^='dv25-pc-'], .dv25-pc-wrap, .dv25-pc-title"
+                        "div[id^='dv25-pc-'], .dv25-pc-wrap, .dv25-pc-title, a.dv25-ng-card"
                     )
                     if len(all_cards) == 0:
                         self.logger.debug(f"  [{section_name}] Sin tarjetas, terminando")
@@ -319,10 +319,9 @@ class TrivisionCRScraper(BaseScraper):
         self, page, collected: dict, section_name: str
     ) -> int:
         """
-        Extrae artículos desde div[id^='dv25-pc-'] > div.dv25-pc-wrap.
-        - Título  : h2.dv25-pc-title
-        - URL     : a.dv25-pc-btn[href]
-        - Fecha   : span.dv25-pc-date
+        Extrae artículos de dos tipos de tarjeta:
+        - a.dv25-ng-card (grilla actual): h3.dv25-ng-title, div.dv25-ng-date, href en la tarjeta
+        - div.dv25-pc-wrap (tarjeta anterior): h2.dv25-pc-title, a.dv25-pc-btn[href], span.dv25-pc-date
         Un solo round-trip JS.
         """
         found_new = 0
@@ -360,6 +359,24 @@ class TrivisionCRScraper(BaseScraper):
                     const date = dateSpan
                         ? (dateSpan.innerText || '').trim()
                         : '';
+
+                    results.push({ href, title, date });
+                });
+
+                // Grilla actual del sitio: <a class="dv25-ng-card" href> con
+                // h3.dv25-ng-title y div.dv25-ng-date (DD/MM/AAAA)
+                document.querySelectorAll('a.dv25-ng-card[href]').forEach(card => {
+                    const h3 = card.querySelector('[class*="dv25-ng-title"]');
+                    const title = h3
+                        ? (h3.innerText || '').replace(/\\s+/g, ' ').trim()
+                        : '';
+                    const href = card.getAttribute('href') || '';
+
+                    if (!href || !title || seen.has(href)) return;
+                    seen.add(href);
+
+                    const dateEl = card.querySelector('[class*="dv25-ng-date"]');
+                    const date = dateEl ? (dateEl.innerText || '').trim() : '';
 
                     results.push({ href, title, date });
                 });
@@ -516,7 +533,7 @@ class TrivisionCRScraper(BaseScraper):
             full_text = clean_text(full_text) if full_text else ""
 
             if not full_text:
-                self.logger.warning(f"Sin texto: {link_data['url']}")
+                self.logger.warning(f"Sin texto: {link_data['url']} (título de la página: {await page.title()!r})")
                 return None
 
             return {

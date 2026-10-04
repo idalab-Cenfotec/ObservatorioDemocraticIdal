@@ -33,7 +33,9 @@ from scrapers.base_scraper import BaseScraper, CorteIncremental
 
 CR_TZ = timezone(timedelta(hours=-6))
 
-BASE_URL = f"https://lareaccioncr.com/{datetime.now().year}/"
+# Sin el año: is_article_url exige año/mes/día/slug después de BASE_URL, y con el
+# año incluido (…/2026/) todos los artículos quedaban con solo 3 segmentos y se rechazaban.
+BASE_URL = "https://lareaccioncr.com/"
 
 # Categorías conocidas del sitio
 CATEGORIES = [
@@ -210,7 +212,8 @@ class LaReaccionCRScraper(BaseScraper):
         page = await context.new_page()
         archive_urls = []
         try:
-            await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30_000)
+            # El widget de archivo mensual no está en la portada; sí en las páginas /AAAA/
+            await page.goto(f"{BASE_URL}{datetime.now().year}/", wait_until="domcontentloaded", timeout=30_000)
             await page.wait_for_timeout(2000)
 
             links = await page.query_selector_all("ul.wp-block-archives-list li a")
@@ -287,12 +290,11 @@ class LaReaccionCRScraper(BaseScraper):
                     try:
                         # Extraer URL: primer link dentro del artículo
                         # O desde el heading h2 > link
-                        url_anchor = await art.query_selector("h2 a, h1 a")
+                        # Tema actual (mkd-*): h3.entry-title; el tema anterior usaba h2/h1
+                        url_anchor = await art.query_selector("h1 a, h2 a, h3.entry-title a, h3 a")
                         if not url_anchor:
-                            # Fallback: primer link con href
-                            url_anchor = await art.query_selector("a[href*='/']")
-                        
-                        if not url_anchor:
+                            # Sin título: no es una nota (p. ej. los <article> de
+                            # "comentarios recientes" del sidebar)
                             continue
                             
                         href = await url_anchor.get_attribute("href")
@@ -303,7 +305,7 @@ class LaReaccionCRScraper(BaseScraper):
 
                         # Fecha: buscar time element
                         pub_date = ""
-                        time_el = await art.query_selector("time")
+                        time_el = await art.query_selector("time, .mkd-post-info-date, .entry-date")
                         if time_el:
                             date_text = await time_el.inner_text()
                             pub_date = parse_date_es(date_text)
@@ -392,7 +394,7 @@ class LaReaccionCRScraper(BaseScraper):
             # -----------------------------------------------------------
             publication_date = link_data.get("publication_date", "")
 
-            time_el = await article.query_selector("time")
+            time_el = await article.query_selector("time, .mkd-post-info-date, .entry-date")
             if time_el:
                 date_text = await time_el.inner_text()
                 parsed = parse_date_es(date_text)

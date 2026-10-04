@@ -535,7 +535,7 @@ class NoticiasEnLineaCRScraper(BaseScraper):
             full_text = clean_text(full_text) if full_text else ""
 
             if not full_text:
-                self.logger.warning(f"Sin texto: {link_data['url']}")
+                self.logger.warning(f"Sin texto: {link_data['url']} (título de la página: {await page.title()!r})")
                 return None
 
             return {

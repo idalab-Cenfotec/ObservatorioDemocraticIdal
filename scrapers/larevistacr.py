@@ -208,6 +208,9 @@ class LaRevistaCRScraper(BaseScraper):
                 if resp and resp.status == 404:
                     self.logger.debug(f"Página {page_num} → 404, fin de sección")
                     break
+                if resp and resp.status >= 400:
+                    self.logger.warning(f"Página {page_num}: HTTP {resp.status} en {url} (posible bloqueo del sitio)")
+                    break
 
                 await page.wait_for_timeout(1500)
 

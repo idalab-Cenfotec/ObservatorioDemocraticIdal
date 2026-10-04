@@ -66,10 +66,13 @@ def extract_article_data(soup):
 
     # Fecha — datetime="2026-04-06T11:55:02-06:00" → YYYY-MM-DD
     date = "Sin fecha"
-    time_tag = soup.find('time', datetime=True)
-    if time_tag:
+    meta_pub = soup.find('meta', attrs={'property': 'article:published_time'})
+    time_tag = soup.find('time', attrs={'datetime': re.compile(r'T')}) or soup.find('time', datetime=True)
+    if meta_pub and meta_pub.get('content'):
+        date = meta_pub['content'].strip()      # ISO 8601 con hora; lo normaliza output_cleaner
+    elif time_tag:
         try:
-            date = time_tag['datetime'][:10]
+            date = time_tag['datetime'].strip()
         except:
             date = clean_text(time_tag.get_text())
 
@@ -86,7 +89,7 @@ def extract_article_data(soup):
 
     # Contenido — <div class="entry-text"> → <p>
     content = "Contenido no encontrado"
-    entry = soup.find('div', class_='entry-text')
+    entry = soup.find('div', class_='ob-rich-content') or soup.find('div', class_='entry-text')
     if entry:
         for tag in entry.find_all(['script', 'style', 'iframe', 'aside', 'figure', 'noscript']):
             tag.decompose()
@@ -115,18 +118,17 @@ with requests.Session() as session:
             print(f"  No se pudo acceder.")
             continue
 
-        # Links — solo del bloque principal <div class="list">
-        # para no capturar links del sidebar
+        # Links — tarjetas del tema actual: <article class="ob-card"> con
+        # <h3 class="ob-card-title"><a href>. (El tema anterior usaba div.list >
+        # div.promo > h3.title y ya no existe, por eso daba 0 artículos.)
+        # Solo el contenido principal (destacados .ob-mega-posts y listado .ob-list),
+        # no las tarjetas del sidebar.
         links = []
-        list_div = main_soup.find('div', class_='list')
-        if list_div:
-            for promo in list_div.find_all('div', class_='promo'):
-                a = promo.find('h3', class_='title')
-                if a:
-                    a = a.find('a', href=True)
-                    if a and 'observador.cr' in a['href'] and a['href'] not in urls_vistas:
-                        links.append(a['href'])
-                        urls_vistas.add(a['href'])
+        for a in main_soup.select('.ob-mega-posts article.ob-card .ob-card-title a[href], '
+                                  '.ob-list article.ob-card .ob-card-title a[href]'):
+            if 'observador.cr' in a['href'] and a['href'] not in urls_vistas:
+                links.append(a['href'])
+                urls_vistas.add(a['href'])
 
         print(f"  {len(links)} articulos nuevos encontrados.")
 
@@ -137,6 +139,8 @@ with requests.Session() as session:
             article_soup = get_soup(link, session)
             if article_soup:
                 title, date, section_real, content = extract_article_data(article_soup)
+                if section_real == "sin-seccion":
+                    section_real = section        # el tema actual ya no trae la sección en el artículo
             else:
                 title, date, section_real, content = "Error", "Error", section, "Error al recuperar"
 
@@ -167,4 +171,5 @@ today_str = datetime.now().strftime('%Y%m%d')
 output_file = f'observadorcr_{today_str}.csv'
 
 df.to_csv(output_file, index=False, encoding='utf-8', sep=',', na_rep='NULL')
-files.download(output_file)
+if files:   # fuera de Colab files es None
+    files.download(output_file)

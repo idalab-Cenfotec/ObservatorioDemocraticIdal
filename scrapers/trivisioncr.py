@@ -470,16 +470,25 @@ class TrivisionCRScraper(BaseScraper):
                         'div.elementor-widget-container'
                     );
 
-                    // Tomar el que tenga más párrafos
-                    let best = null;
-                    let bestCount = 0;
-                    containers.forEach(c => {
-                        const count = c.querySelectorAll('p').length;
-                        if (count > bestCount) {
-                            bestCount = count;
-                            best = c;
-                        }
-                    });
+                    // Primero el widget de contenido de la nota. Elegir "el que
+                    // tenga más párrafos" falla en notas cortas: el pie de página
+                    // (3 párrafos institucionales) le gana al cuerpo (1-2 párrafos).
+                    let best = document.querySelector(
+                        '.elementor-widget-theme-post-content .elementor-widget-container'
+                    );
+                    let bestCount = best ? best.querySelectorAll('p').length : 0;
+
+                    // Respaldo: el contenedor con más párrafos
+                    if (bestCount < 1) {
+                        best = null;
+                        containers.forEach(c => {
+                            const count = c.querySelectorAll('p').length;
+                            if (count > bestCount) {
+                                bestCount = count;
+                                best = c;
+                            }
+                        });
+                    }
 
                     if (!best || bestCount < 1) return '';
 

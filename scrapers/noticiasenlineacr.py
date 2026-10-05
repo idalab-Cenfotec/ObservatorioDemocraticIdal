@@ -528,6 +528,18 @@ class NoticiasEnLineaCRScraper(BaseScraper):
                         }
                     });
 
+                    // Las notas nuevas del sitio no usan <p>: el texto va en <div> sueltos.
+                    // Respaldo: bloques hoja (sin div/p/li adentro) con texto propio.
+                    if (parts.length === 0) {
+                        clone.querySelectorAll('div, li, blockquote').forEach(b => {
+                            if (b.querySelector('div, p, li')) return;
+                            const text = (b.textContent || '').replace(/\\s+/g, ' ').trim();
+                            if (text.length >= 15 && text !== ' ') {
+                                parts.push(text);
+                            }
+                        });
+                    }
+
                     return parts.join('\\n\\n');
                 }
             """)

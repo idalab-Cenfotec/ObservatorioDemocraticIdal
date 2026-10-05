@@ -63,6 +63,9 @@ SITES = [
     {"url": "https://buzonderodrigo.com", "name": "buzonderodrigo"},
     # {"url": "https://canalaltavision.com", "name": "canalaltavision"}, # En caso de que funcione
     {"url": "https://elcolectivo506.com", "name": "elcolectivo506"},
+    # El Jilguero: el script de Colab solo leía la primera página de 2 categorías (19 notas);
+    # la API trae las 153 del sitio (2020 a mar-2025, ya sin publicar).
+    {"url": "https://jilgueromedia.com", "name": "el_jilguero"},
     {"url": "https://elmonitorcr.com", "name": "elmonitorcr"},
     # "elmundocr" (no "elmundo"): el_mundo era El Mundo de España y se quitó del pipeline;
     # el sufijo cr evita confundirlos. "desde": solo notas desde esa fecha (el sitio tiene

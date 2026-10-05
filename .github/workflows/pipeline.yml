@@ -313,7 +313,7 @@ jobs:
           python pipeline_runner.py \
             --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
                    miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
-                   elcolectivo506 elmundocr \
+                   elcolectivo506 elmundocr el_jilguero \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -355,7 +355,7 @@ jobs:
           python pipeline_runner.py \
             --only acontecer_cr alajuela_digital amprensa \
                    crc_89_1 crhoy diarioextra digital506 \
-                   el_jilguero el_jornal el_observador el_sol_de_occidente \
+                   el_jornal el_observador el_sol_de_occidente \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}

@@ -37,7 +37,6 @@ _CSV_OUTPUT_MAP: dict[str, list[str]] = {
     "alajuela_digital":          ["alajueladigital.csv"],
     "crc_89_1":                  ["crc891.csv"],
     "digital506":                ["DIGITAL506.csv", "digital506.csv"],
-    "el_jilguero":               ["jilgueromedia.csv"],
     "el_jornal":                 ["eljornalcr.csv"],
     "el_observador":             ["observadorcr_*.csv"],
     "el_sol_de_occidente":       ["elsoldeoccidente.csv"],
@@ -270,7 +269,6 @@ def get_legacy_registry() -> dict:
         "crhoy":                         os.path.join(scrapers_dir, "crhoy.py"),
         "diarioextra":                   os.path.join(scrapers_dir, "diarioextra.py"),
         "digital506":                    os.path.join(scrapers_dir, "digital506.py"),
-        "el_jilguero":                   os.path.join(scrapers_dir, "el_jilguero.py"),
         "el_jornal":                     os.path.join(scrapers_dir, "el_jornal.py"),
         "el_observador":                 os.path.join(scrapers_dir, "el_observador.py"),
         "el_sol_de_occidente":           os.path.join(scrapers_dir, "el_sol_de_occidente.py"),
@@ -305,6 +303,7 @@ def get_legacy_registry() -> dict:
         "alajuelitasoy":       wordpress_script,
         "buzonderodrigo":      wordpress_script,
         "elcolectivo506":      wordpress_script,
+        "el_jilguero":         wordpress_script,   # antes un script de Colab que solo leía 2 categorías
         "elmonitorcr":         wordpress_script,
         "elmundocr":           wordpress_script,   # elmundo.cr, notas desde 2024 (no confundir con el_mundo = España, ya retirado)
         "enlamira":            wordpress_script,

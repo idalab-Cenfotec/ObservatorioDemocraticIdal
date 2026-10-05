@@ -202,7 +202,7 @@ jobs:
         run: |
           python pipeline_runner.py \
             --only lareaccioncr noticiasenlineacr puroperiodismo \
-                   lavozdegoicoechea \
+                   larevistacr lavozdegoicoechea \
             --workers 4 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -265,7 +265,7 @@ jobs:
           SCRAPER_MAX_MINUTOS: '150'
         run: |
           python pipeline_runner.py \
-            --only teletica repretel \
+            --only teletica repretel genteopa \
             --workers 3 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -311,8 +311,8 @@ jobs:
           SCRAPER_MAX_MINUTOS: '8'
         run: |
           python pipeline_runner.py \
-            --only adiariocr alajuelitasoy buzonderodrigo \
-                   miprensacr radiopuertotv tvsur ustedseinforma \
+            --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
+                   miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
                    elcolectivo506 elmundocr el_jilguero \
             --workers 8 \
             --skip-health \

@@ -292,7 +292,9 @@ def get_legacy_registry() -> dict:
         # Fuera del registro por estar muertos (DNS caído en julio de 2026, ver
         # observatorio_democratico.SITES): anexioncr, yambaradio, actualidaddeloeste,
         # alajuelitahoy; tamarindonews es una página vacía de cPanel.
+        "guanacastealaaltura": wordpress_script,
         "periodicomensaje":    wordpress_script,
+        "radiolapampa":        wordpress_script,
         "miprensacr":          wordpress_script,
         "radiopuertotv":       wordpress_script,
         "tvsur":               wordpress_script,

@@ -44,14 +44,12 @@ _CSV_OUTPUT_MAP: dict[str, list[str]] = {
 
     # ── G7 — Scripts con nombre de archivo distinto al source name ────────
     "el_financiero":             ["elfinancierocr.csv"],
-    "el_mundo":                  ["noticias_elmundo_*.csv"],
     "el_seminario":              ["noticias_semanario_*.csv"],
     "eldelfino":                 ["noticias_delfino_*.csv"],
     "elnortehoy":                ["elnortehoycr.csv"],
     "lanacion":                  ["noticias_nacion_*.csv"],
     "larepublica":               ["noticias_larepublica_*.csv"],
     "noticias_la_garita_costa_rica": ["noticiaslagarita_*.csv"],
-    "periodico_el_mundo":        ["elmundocr.csv"],
     "periodico_mi_tierra":       ["mitierra_*.csv"],
     "seminario":                 ["semanariouniversidad.csv"],
 }
@@ -281,16 +279,13 @@ def get_legacy_registry() -> dict:
         "periodico_mi_tierra":           os.path.join(scrapers_dir, "periódico_mi_tierra.py"),
         "sancarlosdigital":              os.path.join(scrapers_dir, "sancarlosdigital.py"),
         "el_financiero":                 os.path.join(scrapers_dir, "el_financiero.py"),
-        "el_mundo":                      os.path.join(scrapers_dir, "el_mundo.py"),
         "el_seminario":                  os.path.join(scrapers_dir, "el_seminario.py"),
         "eldelfino":                     os.path.join(scrapers_dir, "eldelfino.py"),
         "lanacion":                      os.path.join(scrapers_dir, "lanacion.py"),
         "larepublica":                   os.path.join(scrapers_dir, "larepublica.py"),
-        "periodico_el_mundo":            os.path.join(scrapers_dir, "periodico_el_mundo.py"),
         "seminario":                     os.path.join(scrapers_dir, "seminario.py"),
 
         # ---- Tipo 1: procedural sin Colab ----
-        "eljornalcr":                    os.path.join(scrapers_dir, "eljornal.py"),
 
         # ---- Tipo 1: meta-clave que corre todos los sitios WordPress de una vez ----
         "observatorio_democratico":      wordpress_script,
@@ -311,7 +306,7 @@ def get_legacy_registry() -> dict:
         "buzonderodrigo":      wordpress_script,
         "elcolectivo506":      wordpress_script,
         "elmonitorcr":         wordpress_script,
-        "elmundo":             wordpress_script,
+        "elmundocr":           wordpress_script,   # elmundo.cr, notas desde 2024 (no confundir con el_mundo = España, ya retirado)
         "enlamira":            wordpress_script,
     }
     return _registry_cache

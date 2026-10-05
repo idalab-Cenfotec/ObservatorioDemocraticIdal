@@ -22,7 +22,7 @@ ScrapingObservatorio/
 │   ├── elperiodicocr.py
 │   ├── teletica.py
 │   ├── repretel.py
-│   ├── acontecercr.py
+│   ├── acontecer_cr.py
 │   ├── observatorio.py
 │   ├── observatorio_adapter.py
 │   └── ...

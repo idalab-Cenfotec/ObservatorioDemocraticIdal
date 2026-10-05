@@ -138,7 +138,7 @@ jobs:
         run: |
           python pipeline_runner.py \
             --only ncrnoticias ticotimes trivisioncr latejacr \
-                   mundiario rumboeconomico vozdeguanacaste \
+                   rumboeconomico vozdeguanacaste \
             --workers 6 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -313,7 +313,7 @@ jobs:
           python pipeline_runner.py \
             --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
                    miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
-                   elcolectivo506 \
+                   elcolectivo506 elmundocr \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -395,7 +395,7 @@ jobs:
       - name: Ejecutar scrapers
         run: |
           python pipeline_runner.py \
-            --only el_financiero el_mundo el_seminario eldelfino \
+            --only el_financiero el_seminario eldelfino \
                    elnortehoy lanacion larepublica noticias_la_garita_costa_rica \
                    periodico_mi_tierra sancarlosdigital seminario \
             --workers 8 \

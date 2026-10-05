@@ -64,7 +64,10 @@ SITES = [
     # {"url": "https://canalaltavision.com", "name": "canalaltavision"}, # En caso de que funcione
     {"url": "https://elcolectivo506.com", "name": "elcolectivo506"},
     {"url": "https://elmonitorcr.com", "name": "elmonitorcr"},
-    {"url": "https://elmundo.cr", "name": "elmundo"},
+    # "elmundocr" (no "elmundo"): el_mundo era El Mundo de España y se quitó del pipeline;
+    # el sufijo cr evita confundirlos. "desde": solo notas desde esa fecha (el sitio tiene
+    # 114,000 desde 2015), igual que repretel (desde 2024).
+    {"url": "https://elmundo.cr", "name": "elmundocr", "desde": "2024-01-01"},
     {"url": "https://enlamiracr.com", "name": "enlamira"}
 ]
 
@@ -161,10 +164,13 @@ def cargar_urls_conocidas(source):
 def procesar_sitio(site_dict, max_pages=None):
     base_url = site_dict["url"]
     name = site_dict["name"]
+    desde = site_dict.get("desde")   # 'AAAA-MM-DD': solo notas publicadas desde esa fecha
 
     log_msg(f"\n==============================================")
     log_msg(f"Iniciando Extracción API para: {name.upper()}")
     log_msg(f"Target URL: {base_url}")
+    if desde:
+        log_msg(f"Solo notas desde {desde}")
     log_msg(f"==============================================")
 
     session = requests.Session()
@@ -281,11 +287,15 @@ def procesar_sitio(site_dict, max_pages=None):
             log_msg(f"-> Tope de tiempo alcanzado ({max_min:g} min): se guarda lo reunido hasta ahora.")
             break
         try:
+            after = f"&after={desde}T00:00:00" if desde else ""
             if legacy_mode:
-                page_url = f"{base_url}/?rest_route=/wp/v2/posts&per_page=100&page={page}"
+                page_url = f"{base_url}/?rest_route=/wp/v2/posts&per_page=100&page={page}{after}"
                 resp = _safe_get(page_url, timeout=45)
             else:
-                resp = _safe_get(posts_url, params={"per_page": 100, "page": page}, timeout=45)
+                params = {"per_page": 100, "page": page}
+                if desde:
+                    params["after"] = f"{desde}T00:00:00"
+                resp = _safe_get(posts_url, params=params, timeout=45)
 
             if resp.status_code != 200:
                 if "rest_post_invalid_page_number" in resp.text or resp.status_code == 400:

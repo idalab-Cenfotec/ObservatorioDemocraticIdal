@@ -37,7 +37,6 @@ SCRAPERS_REGISTRY = {
     "latejacr":      ("scrapers.latejacr",      "LaTejaCRScraper"),
     "lavozdegoicoechea": ("scrapers.lavozdegoicoechea", "LaVozDeGoicoecheaScraper"),
     "monumental":        ("scrapers.monumental",        "MonumentalScraper"),
-    "mundiario":         ("scrapers.mundiario",         "MundiarioCRScraper"),
     "ncrnoticias":       ("scrapers.ncrnoticias",       "NCRNoticiasScraper"),
     "noticiasenlineacr": ("scrapers.noticiasenlineacr", "NoticiasEnLineaCRScraper"),
     "costaricastar":     ("scrapers.costaricastar",     "CostaRicaStarScraper"),

@@ -197,6 +197,9 @@ Los scrapers no vuelven a abrir lo que ya está en PostgreSQL ni recorren todo e
 
 Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `self.tiempo_agotado()`, `await self.articulo_seguro(...)`, `await cerrar_pagina(page)` y `self.checkpoint(records)` (ver `scrapers/sinartdigital.py` como modelo) y agregar su tope en `scrapers/topes.py`.
 
+* **Verificación diaria de la escritura dual:** al final del pipeline, `verificar_escritura_dual.py` comprueba que cada URL que esta corrida dejó en el corpus CSV esté también en PostgreSQL (usa el mismo endpoint de URLs conocidas). Si falta alguna, o hay lotes en `contingencia/`, el job `consolidar_corpus` queda en rojo y el resumen del run lista las fuentes afectadas.
+* **Recuperar atrasado de un sitio nuevo:** el modo incremental corta al ver páginas ya cargadas, así que un sitio cuya primera corrida quedó cortada por el tope no sigue hacia atrás solo. Se lanza el workflow a mano con `modo_completo = true` (los scrapers WordPress/Joomla usan 45 min en ese modo).
+
 ---
 
 

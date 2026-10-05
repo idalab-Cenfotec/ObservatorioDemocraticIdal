@@ -143,13 +143,21 @@ class LegacyScraperAdapter(BaseScraper):
         _env = os.environ.copy()
         _env["PYTHONIOENCODING"] = "utf-8"
 
+        # El script WordPress/Joomla corta solo al llegar a SCRAPER_MAX_MINUTOS; el subproceso
+        # debe poder durar eso más un margen para guardar el CSV (por defecto, 10 min).
+        try:
+            max_min = float(_env.get("SCRAPER_MAX_MINUTOS") or 0)
+        except ValueError:
+            max_min = 0
+        timeout_subproceso = max(SUBPROCESS_TIMEOUT, int(max_min * 60) + 120) if self.is_wordpress else SUBPROCESS_TIMEOUT
+
         try:
             result = subprocess.run(
                 cmd,
                 cwd=PROJECT_ROOT,
                 capture_output=True,
                 text=True,
-                timeout=SUBPROCESS_TIMEOUT,
+                timeout=timeout_subproceso,
                 env=_env,
             )
 
@@ -169,7 +177,7 @@ class LegacyScraperAdapter(BaseScraper):
 
         except subprocess.TimeoutExpired:
             self.logger.warning(
-                f"'{self.SOURCE_NAME}' excedió el timeout de {SUBPROCESS_TIMEOUT}s. "
+                f"'{self.SOURCE_NAME}' excedió el timeout de {timeout_subproceso}s. "
                 "Se intentará leer el CSV ya escrito en disco hasta el momento."
             )
 

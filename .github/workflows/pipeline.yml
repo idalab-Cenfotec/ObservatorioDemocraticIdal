@@ -307,13 +307,14 @@ jobs:
           N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
           N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
           SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
-          # El adaptador legacy corta cada sitio a los 600 s; el tope va por debajo para guardar lo reunido
-          SCRAPER_MAX_MINUTOS: '8'
+          # Diario: 8 min por sitio (el adaptador lo corta a los 10). En modo completo (recuperar atrasado
+          # de un sitio nuevo, p. ej. periodicomensaje) 45 min; el adaptador ajusta su límite a este valor.
+          SCRAPER_MAX_MINUTOS: ${{ github.event.inputs.modo_completo == 'true' && '45' || '8' }}
         run: |
           python pipeline_runner.py \
             --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
                    miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
-                   elcolectivo506 elmundocr el_jilguero \
+                   elcolectivo506 elmundocr el_jilguero                    enlamira elmonitorcr periodicomensaje \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -478,6 +479,16 @@ jobs:
               --corpus corpus/
           fi
 
+      # SCRUM-28: lo que esta corrida dejó en el corpus CSV debe estar también en PostgreSQL.
+      # Una desviación deja el job en rojo (ver el último paso); el detalle va al resumen del run.
+      - name: Verificar escritura dual CSV + PostgreSQL
+        id: verif
+        continue-on-error: true
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+        run: python verificar_escritura_dual.py --output output/ --corpus corpus/ --salida logs/
+
       - uses: actions/upload-artifact@v4
         with:
           name: corpus-maestro
@@ -503,6 +514,12 @@ jobs:
           name: reporte-ejecucion
           path: logs/
           retention-days: 7
+
+      - name: Fallar si la escritura dual se desvió
+        if: steps.verif.outcome == 'failure'
+        run: |
+          echo "::error::Desviación entre el corpus CSV y PostgreSQL: ver el resumen de este run"
+          exit 1
 
   # ─────────────────────────────────────────────────────────────────
   # LIMPIEZA — Elimina workflow runs con más de 7 días

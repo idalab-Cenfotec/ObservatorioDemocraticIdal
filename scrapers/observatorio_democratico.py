@@ -430,6 +430,22 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
 
     JOOMLA_PAGE_SIZE = 8
 
+    # Modo incremental (igual que procesar_sitio): known = URLs ya cargadas en PostgreSQL,
+    # None = descargar todo. SCRAPER_MODO_COMPLETO=1 recorre todo sin cortar; SCRAPER_MAX_MINUTOS
+    # limita el tiempo (el listado usa la mitad, el resto es para abrir notas).
+    known = cargar_urls_conocidas(name)
+    modo_completo = os.environ.get("SCRAPER_MODO_COMPLETO") == "1"
+    incremental = known is not None and not modo_completo
+    max_min = float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None
+    t_ini = time.monotonic()
+    t_fin = t_ini + max_min * 60 if max_min else None
+    t_listado = t_ini + max_min * 30 if max_min else None
+    if known is not None:
+        log_msg(f"-> Modo {'completo (sin cortar)' if modo_completo else 'incremental'}: {len(known):,} URLs ya conocidas")
+
+    def _es_conocida(u):
+        return known is not None and url_key(u) in known
+
     def _collect_article_links(html):
         links = []
         for href in re.findall(r'href=["\']([^"\']*?/\d{3,}-[^"\']+)', html):
@@ -495,12 +511,21 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
 
             start = JOOMLA_PAGE_SIZE
             pages = 1
+            # Las categorías van de la nota más nueva a la más vieja: 2 páginas seguidas solo con
+            # notas ya cargadas significan que el resto de la categoría también lo está.
+            conocidas_seguidas = 1 if incremental and initial_links and all(_es_conocida(l) for l in initial_links) else 0
             while start <= max_start:
+                if incremental and conocidas_seguidas >= 2:
+                    log_msg(f"   2 páginas seguidas con solo notas ya cargadas: fin de /{cat}")
+                    break
+                if t_listado and time.monotonic() > t_listado:
+                    log_msg(f"   Tope de tiempo del listado alcanzado en /{cat}")
+                    break
                 try:
                     r = session.get(f"{base_url}/{cat}?start={start}", timeout=15, verify=False)
                     links = _collect_article_links(r.text)
-                    new_count = sum(1 for l in links if l not in all_urls)
                     all_urls.update(links)
+                    conocidas_seguidas = conocidas_seguidas + 1 if incremental and links and all(_es_conocida(l) for l in links) else 0
                     if pages % 20 == 0 or start == max_start:
                         log_msg(f"   start={start}/{max_start}: total_unique={len(all_urls)}")
                     start += JOOMLA_PAGE_SIZE
@@ -514,10 +539,29 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
             continue
 
     log_msg(f"-> URLs unicas colectadas: {len(all_urls)}")
+    if known is not None:
+        all_urls = {u for u in all_urls if not _es_conocida(u)}
+        log_msg(f"-> Nuevas (no cargadas aún): {len(all_urls)}")
 
-    # Phase 2: visit each article and extract content
+    # Phase 2: visit each article and extract content (las más nuevas primero: id más alto)
+    def _id_nota(u):
+        m = re.search(r'/(\d{3,})-', u)
+        return int(m.group(1)) if m else 0
+
+    # Joomla sirve la misma nota bajo varias rutas (/guanacaste/15510-... y /15510-...-repetido):
+    # el número de nota es único, así que se conserva una sola URL por número (la más corta).
+    por_id = {}
+    for u in all_urls:
+        k = _id_nota(u) or u
+        if k not in por_id or len(u) < len(por_id[k]):
+            por_id[k] = u
+    all_urls = set(por_id.values())
+
     dataset = []
-    for i, url in enumerate(sorted(all_urls)):
+    for i, url in enumerate(sorted(all_urls, key=_id_nota, reverse=True)):
+        if t_fin and time.monotonic() > t_fin:
+            log_msg(f"   Tope de tiempo alcanzado: se guardan {len(dataset)} notas, el resto queda para la próxima corrida")
+            break
         article = _extract_article(url)
         if article:
             dataset.append(article)
@@ -532,6 +576,12 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
         fname = os.path.join("output", f"{name}_{datetime.datetime.now(TZ_CR).strftime('%Y%m%d')}.csv")
         df.to_csv(fname, index=False, encoding="utf-8-sig", sep="|")
         log_msg(f"SUCCESS: {len(df)} registros en {fname}")
+    elif known is not None and not all_urls:
+        # Modo incremental: ninguna nota nueva no es un error; CSV solo con encabezado (ver procesar_sitio)
+        fname = os.path.join("output", f"{name}_{datetime.datetime.now(TZ_CR).strftime('%Y%m%d')}.csv")
+        pd.DataFrame(columns=["source","url","title","publication_date","scraping_date","section","full_text","language"]).to_csv(
+            fname, index=False, encoding="utf-8-sig", sep="|")
+        log_msg(f"SUCCESS: sin notas nuevas para {name} (0 registros) → {fname}")
     else:
         log_msg(f"WARNING: Sin datos para {name}.")
 

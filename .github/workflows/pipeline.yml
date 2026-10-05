@@ -28,7 +28,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_1_rapidos:
     name: 'Grupo 1 — Rápidos'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -73,7 +73,7 @@ jobs:
         run: |
           python pipeline_runner.py \
             --only presidencia elperiodicocr sinartdigital monumental \
-                   telediario pulsocr theglobalcr costaricastar ticosland \
+                   telediario pulsocr theglobalcr ticosland \
                    caribeactual puntarenasseoye \
             --workers 4 \
             --skip-health \
@@ -93,7 +93,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_2_medianos:
     name: 'Grupo 2 — Medianos'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -157,7 +157,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_3_lentos:
     name: 'Grupo 3 — Lentos'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -221,7 +221,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_4_muy_lentos:
     name: 'Grupo 4 — Muy lentos'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -284,7 +284,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_5_wordpress:
     name: 'Grupo 5 — WordPress + Legacy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -332,7 +332,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_6_legacy_colab_1:
     name: 'Grupo 6 — Legacy Colab (1/2)'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -374,7 +374,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   grupo_7_legacy_colab_2:
     name: 'Grupo 7 — Legacy Colab (2/2)'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' ||
       github.event.inputs.grupo == 'todos' ||
@@ -416,7 +416,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   consolidar_corpus:
     name: 'Consolidar corpus maestro'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - grupo_1_rapidos
       - grupo_2_medianos
@@ -509,7 +509,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   limpiar_runs_antiguos:
     name: 'Limpiar runs antiguos (>7 días)'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: consolidar_corpus
     if: always()
     permissions:

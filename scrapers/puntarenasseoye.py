@@ -2,7 +2,7 @@ import asyncio
 import re
 from datetime import datetime
 from playwright.async_api import async_playwright
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
 
 MONTHS_ES = {
     "enero": "01", "febrero": "02", "marzo": "03", "abril": "04",
@@ -89,7 +89,11 @@ class PuntarenasSeOyeScraper(BaseScraper):
 
         for section_name, section_url in sections:
             page_num = 1
+            corte = CorteIncremental(self)
             while True:
+                if self.tiempo_agotado(0.5):
+                    self.logger.warning(f"  [{section_name}] Tiempo del listado agotado, se pasa a los artículos")
+                    break
                 if self.test_mode and page_num > TEST_MAX_PAGES:
                     break
                 url = section_url if page_num == 1 else f"{section_url}page/{page_num}/"
@@ -99,26 +103,33 @@ class PuntarenasSeOyeScraper(BaseScraper):
                     await _dismiss_popups(page)
                     cards = await page.query_selector_all("h2.post-title a")
                     if not cards:
-                        await page.close()
+                        await cerrar_pagina(page)
                         break
 
                     new_found = 0
+                    urls_pagina = []
                     for card in cards:
                         href  = await card.get_attribute("href")
                         title = (await card.inner_text()).strip()
+                        if href:
+                            urls_pagina.append(href)
                         if href and href not in seen:
                             seen[href] = {"url": href, "title": title, "section": section_name}
                             new_found += 1
 
-                    await page.close()
+                    await cerrar_pagina(page)
                     if self.test_mode and len(seen) >= TEST_MAX_ARTICLES:
                         break
                     if new_found == 0:
                         break
+                    # Varias páginas seguidas con solo URLs ya cargadas -> fin de sección
+                    if corte.pagina(urls_pagina):
+                        self.logger.info(f"  [{section_name}] Pág {page_num}: solo URLs ya conocidas, fin de sección")
+                        break
                     page_num += 1
                 except Exception as e:
                     self.logger.info(f"Error collecting {url}: {e}")
-                    await page.close()
+                    await cerrar_pagina(page)
                     break
 
             if self.test_mode and len(seen) >= TEST_MAX_ARTICLES:
@@ -160,7 +171,7 @@ class PuntarenasSeOyeScraper(BaseScraper):
                         parts.append(txt)
                 full_text = " ".join(parts)
 
-            await page.close()
+            await cerrar_pagina(page)
 
             if len(full_text) < 300:
                 self.logger.info(f"Skipping (short content): {url}")
@@ -175,7 +186,7 @@ class PuntarenasSeOyeScraper(BaseScraper):
             }
         except Exception as e:
             self.logger.info(f"Error scraping article {url}: {e}")
-            await page.close()
+            await cerrar_pagina(page)
             return None
 
     # ------------------------------------------------------------------
@@ -216,17 +227,25 @@ class PuntarenasSeOyeScraper(BaseScraper):
             self.logger.info(f"Found {len(links)} unique articles.")
 
             # Limit in test mode
-            link_list = list(links.values())
+            link_list = [l for l in links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(link_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
             if self.test_mode:
                 link_list = link_list[:TEST_MAX_ARTICLES]
 
             # Phase 2
             self.logger.info("Phase 2: scraping articles…")
             for i, link_data in enumerate(link_list, 1):
+                if self.tiempo_agotado():
+                    break
                 self.logger.info(f"  [{i}/{len(link_list)}] {link_data['url']}")
-                article = await self._scrape_article(context, link_data)
+                article = await self.articulo_seguro(context, link_data)
                 if article:
                     results.append(article)
+                    self.checkpoint(results)
 
             await browser.close()
 

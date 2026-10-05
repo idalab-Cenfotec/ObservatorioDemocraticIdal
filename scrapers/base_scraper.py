@@ -7,6 +7,7 @@ Implementa la lógica común: exportación CSV, validación de schema, logs.
 import os
 import csv
 import time
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
@@ -16,6 +17,21 @@ import requests
 from langdetect import detect, LangDetectException
 
 from output_cleaner import url_key
+from scrapers.topes import (
+    TOPES_MINUTOS, LIMITE_ARTICULO_SEG, LIMITE_SECCION_SEG, LIMITE_CIERRE_SEG, GUARDADO_PARCIAL_CADA,
+)
+
+
+async def cerrar_pagina(page, limite: int = LIMITE_CIERRE_SEG) -> None:
+    """
+    Cierra una página de Playwright sin poder colgarse: si la página falló
+    ("Execution context was destroyed") page.close() puede no volver nunca y
+    detenía el scraper hasta el timeout del job (puroperiodismo, 5-oct-2026).
+    """
+    try:
+        await asyncio.wait_for(page.close(), timeout=limite)
+    except Exception:
+        pass
 
 
 # Zona horaria Costa Rica (UTC-6)
@@ -144,9 +160,13 @@ class BaseScraper(ABC):
 
         # Tope de tiempo (SCRAPER_MAX_MINUTOS): al agotarse, el scraper deja de
         # visitar artículos y devuelve lo reunido hasta ese momento.
-        self.max_minutos = float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None
+        # El tope propio del scraper (scrapers/topes.py) manda sobre el del grupo (variable de entorno)
+        self.max_minutos = (TOPES_MINUTOS.get(self.SOURCE_NAME)
+                            or float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None)
         self._t0 = time.monotonic()
         self.tope_alcanzado = False
+        self._cp_validos: list[dict] = []   # guardado parcial: registros ya procesados
+        self._cp_n = 0                      # cuántos registros de la lista del scraper ya se procesaron
 
         self._cargar_urls_conocidas()
 
@@ -209,6 +229,53 @@ class BaseScraper(ABC):
     def es_conocida(self, url: str) -> bool:
         """True si el artículo ya está en la base (compara por url_key, no por texto exacto)."""
         return self.incremental and url_key(url) in self.known_keys
+
+    # ------------------------------------------------------------------
+    # Protecciones contra páginas colgadas y pérdida de lo ya reunido
+    # ------------------------------------------------------------------
+
+    async def articulo_seguro(self, context, link_data: dict, limite: int = LIMITE_ARTICULO_SEG):
+        """
+        Llama a _scrape_article con un límite duro de tiempo. Una nota que no termina
+        en `limite` segundos se omite (se cancela y se registra) en vez de frenar todo
+        el scraper; el tope por scraper solo se revisa entre notas y no cubre este caso.
+        """
+        try:
+            return await asyncio.wait_for(self._scrape_article(context, link_data), timeout=limite)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Límite de {limite}s por artículo agotado, se omite: {link_data.get('url')}")
+            return None
+
+    async def seccion_segura(self, corrutina, nombre: str = "", limite: int = LIMITE_SECCION_SEG):
+        """
+        Espera la recolección de enlaces de una sección con un límite duro. Si se agota,
+        devuelve [] y el scraper sigue con la siguiente sección (esa se reintenta en la
+        próxima corrida, porque sus URLs no quedaron cargadas).
+        """
+        try:
+            return await asyncio.wait_for(corrutina, timeout=limite)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Límite de {limite // 60} min agotado recolectando la sección {nombre!r}, se continúa con la siguiente")
+            return []
+
+    def checkpoint(self, registros: list[dict], cada: int = GUARDADO_PARCIAL_CADA) -> None:
+        """
+        Guarda en el CSV final de la corrida lo reunido hasta ahora, cada `cada` artículos.
+        Si el job se cancela por timeout, el CSV parcial ya existe y la consolidación lo
+        recoge (el 5-oct-2026 se perdieron 3,678 notas de puntarenasseoye porque el CSV
+        solo se escribía al terminar). run() lo reescribe completo al final.
+        """
+        if not registros or len(registros) % cada:
+            return
+        try:
+            nuevos = registros[self._cp_n:]
+            validos, _ = self._process([dict(r) for r in nuevos])
+            self._cp_validos.extend(validos)
+            self._cp_n = len(registros)
+            self._export_csv(self._cp_validos, self._get_output_filename(), SCHEMA_COLUMNS)
+            self.logger.info(f"Guardado parcial: {len(self._cp_validos)} artículos en {self._get_output_filename()}")
+        except Exception as e:
+            self.logger.warning(f"No se pudo guardar el parcial: {e}")
 
     def debe_omitir(self, url: str) -> bool:
         """es_conocida + cuenta el artículo como omitido, para el resumen de la corrida."""

@@ -36,7 +36,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper, CorteIncremental
+from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -172,7 +172,7 @@ class TelediarioCRScraper(BaseScraper):
 
             for section_url, section_name in sections_to_run:
                 self.logger.info(f"Recolectando: {section_name} ({section_url})")
-                links = await self._collect_section(context, section_url, section_name)
+                links = await self.seccion_segura(self._collect_section(context, section_url, section_name), "_collect_section")
 
                 new_count = 0
                 for link in links:
@@ -208,9 +208,10 @@ class TelediarioCRScraper(BaseScraper):
                 if self.tiempo_agotado():
                     break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES + random.uniform(0.1, 0.4))
 
             await browser.close()
@@ -288,7 +289,7 @@ class TelediarioCRScraper(BaseScraper):
                 self.logger.error(f"  Error en {url}: {e}", exc_info=True)
                 break
             finally:
-                await page.close()
+                await cerrar_pagina(page)
 
             await asyncio.sleep(DELAY_BETWEEN_PAGES)
 
@@ -544,7 +545,7 @@ class TelediarioCRScraper(BaseScraper):
             self.logger.error(f"Error en {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
 
 # ------------------------------------------------------------------

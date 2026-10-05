@@ -31,7 +31,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -145,7 +145,7 @@ class LaRevistaCRScraper(BaseScraper):
             for slug, section_name in SECTIONS:
                 section_url = f"{BASE_URL}{slug}/"
                 self.logger.info(f"Recolectando sección: {section_name} ({section_url})")
-                links = await self._collect_section(context, section_url, section_name)
+                links = await self.seccion_segura(self._collect_section(context, section_url, section_name), "_collect_section")
                 for link in links:
                     if link["url"] not in article_links:
                         article_links[link["url"]] = link
@@ -167,9 +167,10 @@ class LaRevistaCRScraper(BaseScraper):
 
             for i, link_data in enumerate(links_list):
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES)
 
             await browser.close()
@@ -305,7 +306,7 @@ class LaRevistaCRScraper(BaseScraper):
                 self.logger.error(f"Error en listado {url}: {e}", exc_info=True)
                 break
             finally:
-                await page.close()
+                await cerrar_pagina(page)
 
             await asyncio.sleep(DELAY_BETWEEN_PAGES)
 
@@ -446,7 +447,7 @@ class LaRevistaCRScraper(BaseScraper):
             self.logger.error(f"Error en {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
 
 # Ejecución directa para pruebas

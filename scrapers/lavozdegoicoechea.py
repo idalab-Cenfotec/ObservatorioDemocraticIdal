@@ -24,7 +24,7 @@ sys.path.insert(
     )
 )
 
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -214,9 +214,12 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
                     f"{section_name}"
                 )
 
-                links = await self._collect_section(
-                    context,
-                    section_url,
+                links = await self.seccion_segura(
+                    self._collect_section(
+                        context,
+                        section_url,
+                        section_name
+                    ),
                     section_name
                 )
 
@@ -253,16 +256,30 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
                 MAX_CONCURRENT_ARTICLES
             )
 
+            registros = []   # para el guardado parcial (gather solo devuelve al final)
+
             async def bounded_scrape(link):
 
                 async with semaphore:
 
-                    return await self._scrape_article(
+                    if self.tiempo_agotado():
+                        return None
+
+                    rec = await self.articulo_seguro(
                         context,
                         link
                     )
+                    if rec:
+                        registros.append(rec)
+                        self.checkpoint(registros)
+                    return rec
 
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
             if self.test_mode:
                 links_list = links_list[:TEST_MAX_ARTICLES]
 
@@ -474,7 +491,7 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
 
             finally:
 
-                await page.close()
+                await cerrar_pagina(page)
 
             await asyncio.sleep(
                 DELAY_BETWEEN_PAGES
@@ -662,7 +679,7 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
 
         finally:
 
-            await page.close()
+            await cerrar_pagina(page)
 
 
 if __name__ == "__main__":

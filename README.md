@@ -185,6 +185,20 @@ SCRAPERS_REGISTRY = {
 
 ---
 
+# Modo incremental, topes de tiempo y protecciones
+
+Los scrapers no vuelven a abrir lo que ya está en PostgreSQL ni recorren todo el archivo de cada sitio todos los días:
+
+* **Modo incremental:** al arrancar, `BaseScraper` pide a N8N (`GET /webhook/urls-conocidas?source=<fuente>`) las URLs ya cargadas. Omite esas notas y deja de paginar tras 3 páginas seguidas solo con URLs conocidas. Sin `N8N_URLS_CONOCIDAS_URL` y `N8N_WEBHOOK_TOKEN` (o con N8N caído) funciona como antes. `SCRAPER_MODO_COMPLETO=1` (entrada `modo_completo` del workflow) recorre todo el listado sin cortar, pero sigue abriendo solo lo nuevo, para traer lo atrasado.
+* **Tope de tiempo por scraper:** `scrapers/topes.py` (`TOPES_MINUTOS`). Al agotarse, el scraper deja de visitar notas y devuelve lo reunido; el listado usa como máximo la mitad. Un scraper sin entrada usa `SCRAPER_MAX_MINUTOS` del grupo.
+* **Límite duro por nota (2 min):** una página colgada se omite en vez de frenar todo (`BaseScraper.articulo_seguro`).
+* **Límite por sección (20 min) y cierre seguro de página:** `seccion_segura` y `cerrar_pagina`; evitan que un `page.close()` o una sección que no vuelve detengan el job hasta su timeout.
+* **Guardado parcial cada 100 notas:** `BaseScraper.checkpoint` deja el CSV del día en `output/`; si el job se cancela, la consolidación recoge lo ya reunido.
+
+Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `self.tiempo_agotado()`, `await self.articulo_seguro(...)`, `await cerrar_pagina(page)` y `self.checkpoint(records)` (ver `scrapers/sinartdigital.py` como modelo) y agregar su tope en `scrapers/topes.py`.
+
+---
+
 
 # Validaciones Automáticas
 

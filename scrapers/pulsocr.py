@@ -35,7 +35,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -165,7 +165,7 @@ class PulsoCRScraper(BaseScraper):
 
             for section_url, section_name in SECTIONS:
                 self.logger.info(f"Recolectando: {section_name} ({section_url})")
-                links = await self._collect_section(context, section_url, section_name)
+                links = await self.seccion_segura(self._collect_section(context, section_url, section_name), "_collect_section")
 
                 new_count = 0
                 for link in links:
@@ -192,15 +192,23 @@ class PulsoCRScraper(BaseScraper):
             # PASO 2: Visitar cada artículo
             # -------------------------------------------------------
             records = []
-            links_list = list(article_links.values())
+            links_list = [l for l in article_links.values() if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links_list)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
             if getattr(self, 'test_mode', False):
                 links_list = links_list[:TEST_MAX_ARTICLES]
 
             for i, link_data in enumerate(links_list):
+                if self.tiempo_agotado():
+                    break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES)
 
             await browser.close()
@@ -221,7 +229,12 @@ class PulsoCRScraper(BaseScraper):
         page_num = 1
         max_pages = TEST_MAX_PAGES if self.test_mode else 9999
 
+        corte = CorteIncremental(self)
+
         while page_num <= max_pages:
+            if self.tiempo_agotado(0.5):
+                self.logger.warning(f"  [{section_name}] Tiempo del listado agotado, se pasa a los artículos")
+                break
             url = base_url if page_num == 1 else base_url.rstrip("/") + f"/page/{page_num}/"
             page = await context.new_page()
             found_on_page = 0
@@ -236,7 +249,12 @@ class PulsoCRScraper(BaseScraper):
                 await page.wait_for_timeout(1500)
                 await self._scroll_to_bottom(page)
 
+                n_antes = len(collected)
                 found_on_page = await self._extract_cards(page, collected, section_name)
+                # Varias páginas seguidas con solo URLs ya cargadas -> fin de sección
+                if corte.pagina([l['url'] for l in list(collected.values())[n_antes:]]):
+                    self.logger.info(f"  [{section_name}] Pág {page_num}: solo URLs ya conocidas, fin de sección")
+                    break
 
                 self.logger.debug(
                     f"  [{section_name}] Pág {page_num}: "
@@ -268,7 +286,7 @@ class PulsoCRScraper(BaseScraper):
                 self.logger.error(f"  Error en {url}: {e}", exc_info=True)
                 break
             finally:
-                await page.close()
+                await cerrar_pagina(page)
 
             await asyncio.sleep(DELAY_BETWEEN_PAGES)
 
@@ -474,7 +492,7 @@ class PulsoCRScraper(BaseScraper):
             self.logger.error(f"Error en {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
 
 if __name__ == "__main__":

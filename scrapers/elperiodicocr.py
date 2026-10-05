@@ -23,7 +23,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -119,7 +119,9 @@ class ElPeriodicoCRScraper(BaseScraper):
             # -------------------------------------------------------
             # PASO 1: Recolectar URLs desde la página de listado
             # -------------------------------------------------------
-            article_links = await self._collect_article_links(context)
+            article_links = await self.seccion_segura(self._collect_article_links(context), "_collect_article_links")
+            # Solo notas que no están en la base (antes se reabrían todas cada día)
+            article_links = [l for l in article_links if not self.debe_omitir(l["url"])]
             # Limitar listado total por seguridad
             article_links = article_links[:150]
             if self.test_mode:
@@ -132,10 +134,13 @@ class ElPeriodicoCRScraper(BaseScraper):
             # -------------------------------------------------------
             records = []
             for i, link_data in enumerate(article_links):
+                if self.tiempo_agotado():
+                    break
                 self.logger.info(f"[{i+1}/{len(article_links)}] Procesando: {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                     self.logger.info(f"   ✓ Artículo extraído exitosamente")
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES)
 
@@ -229,7 +234,7 @@ class ElPeriodicoCRScraper(BaseScraper):
             )
 
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
         return list(collected.values())
 
@@ -355,7 +360,7 @@ class ElPeriodicoCRScraper(BaseScraper):
             self.logger.error(f"Error scrapeando {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
 
 # Permite ejecutar el scraper directamente para pruebas

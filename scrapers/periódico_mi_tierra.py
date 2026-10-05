@@ -94,6 +94,8 @@ with requests.Session() as session:
             if a:
                 href = a['href']
                 link = href if href.startswith('http') else BASE_URL + href
+                # El sitio a veces enlaza la misma nota con /index.php/; se guarda siempre la URL canónica
+                link = link.replace('/index.php/', '/')
                 if link not in urls_vistas:
                     links.append(link)
                     urls_vistas.add(link)

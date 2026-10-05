@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from playwright.async_api import async_playwright
-from scrapers.base_scraper import BaseScraper
+from scrapers.base_scraper import BaseScraper, cerrar_pagina
 
 BASE_URL = "https://www.presidencia.go.cr"
 NEWS_URL = f"{BASE_URL}/noticias"
@@ -103,7 +103,7 @@ class PresidenciaScraper(BaseScraper):
         except Exception as e:
             self.logger.info(f"Error collecting links: {e}")
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
         return links
 
@@ -143,7 +143,7 @@ class PresidenciaScraper(BaseScraper):
                         parts.append(txt)
                 full_text = " ".join(parts)
 
-            await page.close()
+            await cerrar_pagina(page)
 
             if len(full_text) < 300:
                 self.logger.info(f"Skipping (short content): {url}")
@@ -159,7 +159,7 @@ class PresidenciaScraper(BaseScraper):
 
         except Exception as e:
             self.logger.info(f"Error scraping article {url}: {e}")
-            await page.close()
+            await cerrar_pagina(page)
             return None
 
     # ------------------------------------------------------------------
@@ -179,8 +179,14 @@ class PresidenciaScraper(BaseScraper):
                     f"  Date filter: from={self.date_from or 'any'} "
                     f"to={self.date_to or 'any'}"
                 )
-            links = await self._collect_links(browser)
+            links = await self.seccion_segura(self._collect_links(browser), "_collect_links")
             self.logger.info(f"Found {len(links)} articles matching filters.")
+            links = [l for l in links if not self.debe_omitir(l["url"])]
+            if self.incremental:
+                self.logger.info(
+                    f"Artículos nuevos por visitar: {len(links)} "
+                    f"({self.omitidos_conocidos} ya estaban en la base)"
+                )
 
             if self.test_mode:
                 links = links[:TEST_MAX_ARTICLES]
@@ -188,10 +194,13 @@ class PresidenciaScraper(BaseScraper):
 
             self.logger.info("Phase 2: scraping articles…")
             for i, link_data in enumerate(links, 1):
+                if self.tiempo_agotado():
+                    break
                 self.logger.info(f"  [{i}/{len(links)}] {link_data['url']}")
-                article = await self._scrape_article(browser, link_data)
+                article = await self.articulo_seguro(browser, link_data)
                 if article:
                     results.append(article)
+                    self.checkpoint(results)
 
             await browser.close()
 

@@ -29,7 +29,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper, CorteIncremental
+from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -158,7 +158,7 @@ class LaReaccionCRScraper(BaseScraper):
             for cat in CATEGORIES:
                 cat_url = f"{BASE_URL}category/{cat}/"
                 self.logger.info(f"Scrapendo categoría: {cat}")
-                links = await self._collect_from_listing(context, cat_url, section_hint=cat)
+                links = await self.seccion_segura(self._collect_from_listing(context, cat_url, section_hint=cat), "_collect_from_listing")
                 for link in links:
                     if link["url"] not in article_links:
                         article_links[link["url"]] = link
@@ -167,7 +167,7 @@ class LaReaccionCRScraper(BaseScraper):
             # Desde archivo mensual
             for arch_url in archive_urls:
                 self.logger.info(f"Scrapendo archivo: {arch_url}")
-                links = await self._collect_from_listing(context, arch_url, section_hint="")
+                links = await self.seccion_segura(self._collect_from_listing(context, arch_url, section_hint=""), "_collect_from_listing")
                 for link in links:
                     if link["url"] not in article_links:
                         article_links[link["url"]] = link
@@ -192,9 +192,10 @@ class LaReaccionCRScraper(BaseScraper):
                 if self.tiempo_agotado():
                     break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES)
 
             await browser.close()
@@ -224,7 +225,7 @@ class LaReaccionCRScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Error obteniendo archivo mensual: {e}")
         finally:
-            await page.close()
+            await cerrar_pagina(page)
         return archive_urls
 
     # ------------------------------------------------------------------
@@ -350,7 +351,7 @@ class LaReaccionCRScraper(BaseScraper):
                 self.logger.error(f"Error en listado {url}: {e}")
                 break
             finally:
-                await page.close()
+                await cerrar_pagina(page)
 
             await asyncio.sleep(DELAY_BETWEEN_PAGES)
 
@@ -424,7 +425,7 @@ class LaReaccionCRScraper(BaseScraper):
             self.logger.error(f"Error scrapeando {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
     async def _extract_text_from_block(self, block) -> str:
         """

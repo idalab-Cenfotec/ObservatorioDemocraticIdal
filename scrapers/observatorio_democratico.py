@@ -168,6 +168,7 @@ def procesar_sitio(site_dict, max_pages=None):
     base_url = site_dict["url"]
     name = site_dict["name"]
     desde = site_dict.get("desde")   # 'AAAA-MM-DD': solo notas publicadas desde esa fecha
+    idioma = site_dict.get("language", "es")   # los sitios en inglés (p. ej. news.co.cr) deben declararlo
 
     log_msg(f"\n==============================================")
     log_msg(f"Iniciando Extracción API para: {name.upper()}")
@@ -340,7 +341,7 @@ def procesar_sitio(site_dict, max_pages=None):
                     "scraping_date": datetime.datetime.now(TZ_CR).strftime('%Y-%m-%d %H:%M:%S'),
                     "section": clean_extreme(section_raw),
                     "full_text": content_clean,
-                    "language": "es"
+                    "language": idioma
                 })
 
             log_msg(f"-> [{name}] Pagina {page} extraida (+{len(data)} items, {n_conocidos_pagina} ya conocidos)")

@@ -34,7 +34,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scrapers.base_scraper import BaseScraper, CorteIncremental
+from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -137,9 +137,9 @@ class LaTejaCRScraper(BaseScraper):
                 self.logger.info(f"Recolectando: {section_name} ({section_url})")
 
                 if section_type == "mostread":
-                    links = await self._collect_mostread(context, section_url, section_name)
+                    links = await self.seccion_segura(self._collect_mostread(context, section_url, section_name), "_collect_mostread")
                 else:
-                    links = await self._collect_scroll(context, section_url, section_name)
+                    links = await self.seccion_segura(self._collect_scroll(context, section_url, section_name), "_collect_scroll")
 
                 new_count = 0
                 for link in links:
@@ -178,9 +178,10 @@ class LaTejaCRScraper(BaseScraper):
                 if self.tiempo_agotado():
                     break
                 self.logger.debug(f"[{i+1}/{len(links_list)}] {link_data['url']}")
-                record = await self._scrape_article(context, link_data)
+                record = await self.articulo_seguro(context, link_data)
                 if record:
                     records.append(record)
+                    self.checkpoint(records)
                 await asyncio.sleep(DELAY_BETWEEN_ARTICLES)
 
             await browser.close()
@@ -282,7 +283,7 @@ class LaTejaCRScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Error en mostread {section_url}: {e}", exc_info=True)
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
         return list(collected.values())
 
@@ -376,7 +377,7 @@ class LaTejaCRScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Error en scroll {section_url}: {e}", exc_info=True)
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
         return list(collected.values())
 
@@ -627,7 +628,7 @@ class LaTejaCRScraper(BaseScraper):
             self.logger.error(f"Error en {link_data['url']}: {e}", exc_info=True)
             return None
         finally:
-            await page.close()
+            await cerrar_pagina(page)
 
 
 # Ejecución directa para pruebas

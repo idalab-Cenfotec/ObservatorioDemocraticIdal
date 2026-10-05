@@ -46,9 +46,9 @@ from output_cleaner import url_key
 # Lista de todos los portales noticiosos requeridos
 SITES = [
     # DEAD (DNS fail 2026-07): {"url": "https://anexioncr.com", "name": "anexioncr"},
-    {"url": "https://guanacastealaaltura.com", "name": "guanacastealaaltura"},
+    # guanacastealaaltura y radiolapampa (y genteopa, larevistacr) siguen publicando pero su hosting
+    # responde 403 a todo cliente automático (oct-2026); retirados del pipeline hasta tener acceso.
     # Joomla — handled by procesar_periodicomensaje(): {"url": "https://periodicomensaje.com", "name": "periodicomensaje"},
-    {"url": "https://radiolapampa.net", "name": "radiolapampa"},
     # DEAD cPanel placeholder (2026-07): {"url": "https://tamarindonews.com", "name": "tamarindonews"},
     # DEAD (DNS fail 2026-07): {"url": "https://yambaradio.com", "name": "yambaradio"},
     {"url": "https://miprensacr.com", "name": "miprensacr"},

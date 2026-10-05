@@ -443,17 +443,25 @@ class RumboEconomicoScraper(BaseScraper):
                         'div[class*="elementor-widget-container"]'
                     );
 
-                    // Quedarse con el que tenga más párrafos (el del artículo)
-                    let bestContainer = null;
-                    let bestCount = 0;
+                    // Primero el widget de contenido de la nota. "El que tenga más párrafos"
+                    // falla: la barra lateral "Últimas Noticias" tiene tantos o más párrafos
+                    // que el cuerpo y en ~28% de las notas ganaba y se guardaba como texto.
+                    let bestContainer = document.querySelector(
+                        '.elementor-widget-theme-post-content .elementor-widget-container'
+                    );
+                    let bestCount = bestContainer ? bestContainer.querySelectorAll('p').length : 0;
 
-                    containers.forEach(c => {
-                        const pCount = c.querySelectorAll('p').length;
-                        if (pCount > bestCount) {
-                            bestCount = pCount;
-                            bestContainer = c;
-                        }
-                    });
+                    // Respaldo: el contenedor con más párrafos
+                    if (bestCount < 1) {
+                        bestContainer = null;
+                        containers.forEach(c => {
+                            const pCount = c.querySelectorAll('p').length;
+                            if (pCount > bestCount) {
+                                bestCount = pCount;
+                                bestContainer = c;
+                            }
+                        });
+                    }
 
                     if (!bestContainer || bestCount < 2) return '';
 

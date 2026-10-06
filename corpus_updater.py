@@ -16,6 +16,7 @@ Uso:
     python corpus_updater.py --stats                # muestra estado del corpus
 """
 
+import json
 import os
 import re
 import sys
@@ -25,7 +26,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-from output_cleaner import clean_dataframe, url_key
+from output_cleaner import clean_dataframe, url_key, cargar_exclusiones
 
 CR_TZ      = timezone(timedelta(hours=-6))
 SEPARATOR  = "|"
@@ -157,6 +158,7 @@ def enviar_a_n8n(df: pd.DataFrame, webhook_url: str, webhook_token: str) -> dict
         if isinstance(respuesta, dict):
             for k in totales:
                 totales[k] += int(respuesta.get(k) or 0)
+    totales["enviados"] = len(registros)   # lo que quedó tras la limpieza, para cuadrar contra "recibidos"
     return totales
 
 
@@ -190,23 +192,35 @@ def enviar_nuevos_dual(
     df_nuevos: pd.DataFrame,
     webhook_url: str | None,
     webhook_token: str | None,
-) -> None:
+) -> dict | None:
     """Escritura dual del lado del updater (Anexo Técnico 3.7): el CSV del
     corpus ya se guarda igual que siempre; esto solo intenta además mandar los
     artículos nuevos del día a PostgreSQL. Si falla, quedan en contingencia/
     para reintentarse en la corrida siguiente."""
     if webhook_url is None or len(df_nuevos) == 0:
-        return
+        return None
 
     try:
         t = enviar_a_n8n(df_nuevos, webhook_url, webhook_token)
         _log(f"Artículos nuevos enviados a PostgreSQL vía N8N: {t['recibidos']:,} recibidos, "
              f"{t['insertados']:,} nuevos, {t['ya_existian']:,} ya existían, {t['rechazados']:,} rechazados")
+        return {**t, "nuevos_en_csv": len(df_nuevos), "contingencia": False}
     except requests.exceptions.RequestException as e:
         Path("contingencia").mkdir(parents=True, exist_ok=True)
         ruta_contingencia = f"contingencia/{datetime.now(CR_TZ):%Y-%m-%d}_nuevos.csv"
         df_nuevos.to_csv(ruta_contingencia, sep=SEPARATOR, index=False, encoding="utf-8")
         registrar_corrida_parcial(ruta_contingencia, str(e))
+        return {"nuevos_en_csv": len(df_nuevos), "contingencia": True, "error": str(e)}
+
+
+def guardar_reporte_envio(reporte: dict | None, carpeta: str = "logs") -> None:
+    """Deja logs/envio_n8n_<fecha>.json con lo que se envió a PostgreSQL y lo que N8N
+    contestó; verificar_escritura_dual.py lo usa para cuadrar CSV contra base."""
+    if reporte is None:
+        return
+    Path(carpeta).mkdir(parents=True, exist_ok=True)
+    ruta = Path(carpeta) / f"envio_n8n_{datetime.now(CR_TZ):%Y%m%d}.json"
+    ruta.write_text(json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,6 +288,13 @@ def update_corpus(
 
     # Se compara por url_key (sin www., http/https, barra final): la misma
     # noticia con la URL escrita distinto no es un artículo nuevo.
+    # Notas eliminadas a propósito de PostgreSQL (db/exclusiones_urls.txt): el CSV las omite igual.
+    excluidas = cargar_exclusiones()
+    if excluidas:
+        en_corpus = corpus["url"].fillna("").map(url_key).isin(excluidas)
+        if en_corpus.any():
+            _log(f"Se quitan {int(en_corpus.sum()):,} notas excluidas (duplicados/basura/fuentes extranjeras) del corpus")
+            corpus = corpus[~en_corpus].reset_index(drop=True)
     urls_existentes = set(corpus["url"].dropna().map(url_key))
     _log(f"Artículos en corpus: {len(corpus):,}")
     _log(f"URLs únicas en corpus: {len(urls_existentes):,}")
@@ -300,7 +321,8 @@ def update_corpus(
         total_nuevos_brutos += len(df)
 
         # Filtrar solo URLs que no existen en el corpus
-        df_nuevo = df[~df["url"].fillna("").map(url_key).isin(urls_existentes)]
+        claves = df["url"].fillna("").map(url_key)
+        df_nuevo = df[~claves.isin(urls_existentes) & ~claves.isin(excluidas)]
         duplicados = len(df) - len(df_nuevo)
         total_duplicados += duplicados
 
@@ -361,7 +383,7 @@ def update_corpus(
     out_path = os.path.join(corpus_dir, filename)
 
     corpus_nuevo.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
-    enviar_nuevos_dual(df_nuevos, webhook_url, webhook_token)
+    guardar_reporte_envio(enviar_nuevos_dual(df_nuevos, webhook_url, webhook_token))
 
     _log(f"Corpus actualizado: {out_path}")
     _log(f"Versión           : v{version}")

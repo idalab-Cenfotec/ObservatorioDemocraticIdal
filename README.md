@@ -197,7 +197,8 @@ Los scrapers no vuelven a abrir lo que ya está en PostgreSQL ni recorren todo e
 
 Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `self.tiempo_agotado()`, `await self.articulo_seguro(...)`, `await cerrar_pagina(page)` y `self.checkpoint(records)` (ver `scrapers/sinartdigital.py` como modelo) y agregar su tope en `scrapers/topes.py`.
 
-* **Verificación diaria de la escritura dual:** al final del pipeline, `verificar_escritura_dual.py` comprueba que cada URL que esta corrida dejó en el corpus CSV esté también en PostgreSQL (usa el mismo endpoint de URLs conocidas). Si falta alguna, o hay lotes en `contingencia/`, el job `consolidar_corpus` queda en rojo y el resumen del run lista las fuentes afectadas.
+* **Verificación diaria de la escritura dual:** `corpus_updater.py` deja `logs/envio_n8n_<fecha>.json` con lo que mandó a PostgreSQL y lo que N8N contestó; al final del pipeline `verificar_escritura_dual.py` exige que cuadre (recibidas = enviadas = insertadas + ya existentes + rechazadas) y que no haya lotes en `contingencia/`. Si no cuadra, el job `consolidar_corpus` queda en rojo y el resumen del run dice por qué. Las notas rechazadas por N8N son aviso, y el conteo por fuente de URLs del CSV sin fila en la base es solo informativo (incluye duplicados que los índices rechazan a propósito).
+* **Notas eliminadas a propósito:** `db/exclusiones_urls.txt` lista las URLs que se borraron de PostgreSQL (duplicados, basura, fuentes extranjeras). `corpus_updater.py` las saca del corpus CSV y no las vuelve a enviar, para que CSV y base no se desvíen. Si se borran más notas de la base, se agregan ahí (`fuente<TAB>url_key`).
 * **Recuperar atrasado de un sitio nuevo:** el modo incremental corta al ver páginas ya cargadas, así que un sitio cuya primera corrida quedó cortada por el tope no sigue hacia atrás solo. Se lanza el workflow a mano con `modo_completo = true` (los scrapers WordPress/Joomla usan 45 min en ese modo).
 
 ---

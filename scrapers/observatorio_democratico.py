@@ -557,7 +557,21 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
             por_id[k] = u
     all_urls = set(por_id.values())
 
+    # Reanudable: si una corrida larga se cortó, el respaldo intermedio (cada 500 notas) trae lo ya
+    # extraído y solo se visitan las que faltan. Un respaldo de más de 3 días se ignora.
+    ruta_respaldo = os.path.join("output", f"{name}_backup.csv")
     dataset = []
+    if os.path.isfile(ruta_respaldo) and time.time() - os.path.getmtime(ruta_respaldo) < 3 * 86400:
+        try:
+            previo = pd.read_csv(ruta_respaldo, sep="|", dtype=str, keep_default_na=False, encoding="utf-8-sig")
+            dataset = previo.to_dict(orient="records")
+            hechas = {_id_nota(u) or u for u in previo["url"]}
+            all_urls = {u for u in all_urls if (_id_nota(u) or u) not in hechas}
+            log_msg(f"-> Reanudando desde el respaldo: {len(dataset)} notas ya extraídas, faltan {len(all_urls)}")
+        except Exception as e:
+            log_msg(f"-> No se pudo leer el respaldo ({e}); se empieza de cero")
+            dataset = []
+
     for i, url in enumerate(sorted(all_urls, key=_id_nota, reverse=True)):
         if t_fin and time.monotonic() > t_fin:
             log_msg(f"   Tope de tiempo alcanzado: se guardan {len(dataset)} notas, el resto queda para la próxima corrida")
@@ -579,6 +593,8 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
         fname = os.path.join("output", f"{name}_{datetime.datetime.now(TZ_CR).strftime('%Y%m%d')}.csv")
         df.to_csv(fname, index=False, encoding="utf-8-sig", sep="|")
         log_msg(f"SUCCESS: {len(df)} registros en {fname}")
+        if os.path.isfile(ruta_respaldo):
+            os.remove(ruta_respaldo)      # el CSV final ya tiene todo; evita reanudar con datos viejos
     elif known is not None and not all_urls:
         # Modo incremental: ninguna nota nueva no es un error; CSV solo con encabezado (ver procesar_sitio)
         fname = os.path.join("output", f"{name}_{datetime.datetime.now(TZ_CR).strftime('%Y%m%d')}.csv")

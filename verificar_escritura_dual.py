@@ -2,20 +2,19 @@
 """Verificación diaria de la escritura dual CSV + PostgreSQL (SCRUM-28).
 
 Corre al final del pipeline, después de que corpus_updater.py / corpus_builder.py
-actualizaron el corpus CSV y lo enviaron a PostgreSQL por el webhook de N8N.
-Compara lo que esta corrida aportó al corpus CSV contra lo que hay en la base:
+actualizaron el corpus CSV y mandaron lo nuevo a PostgreSQL por el webhook de N8N.
 
-  1. Toma las URLs de los CSV del día (output/*.csv) que quedaron en el corpus
-     CSV más reciente (corpus/corpus_observatorio_v*.csv), es decir, lo que el
-     CSV aceptó tras la limpieza.
-  2. Pide a N8N (GET ?source=<fuente>, el mismo endpoint del modo incremental)
-     las URLs que ya están en PostgreSQL.
-  3. Cualquier URL del paso 1 que no esté en PostgreSQL es una desviación de la
-     escritura dual. También se reportan los lotes pendientes en contingencia/.
+Criterio (lo que deja el job en rojo, código de salida 1):
+  1. Lo que el CSV marcó como nuevo y se envió (logs/envio_n8n_<fecha>.json) debe
+     cuadrar con lo que N8N contestó: recibidos == enviados e
+     insertados + ya_existian + rechazados == recibidos.
+  2. No puede haber lotes pendientes en contingencia/ ni un envío fallido.
+Avisos (no ponen el job en rojo): notas rechazadas por la validación de N8N.
+Informativo: por fuente, URLs de hoy que el corpus CSV tiene y PostgreSQL no
+(incluye duplicados de contenido que los índices únicos rechazan a propósito).
 
-Sale con código 1 si hay desviación (el job queda en rojo y es la alerta), y deja
-un JSON con el detalle y un resumen en Markdown (GITHUB_STEP_SUMMARY). Los JSON
-diarios son la evidencia del período de operación en escritura dual.
+Deja un JSON con el detalle y un resumen en Markdown (GITHUB_STEP_SUMMARY). Los
+reportes diarios son la evidencia del período de operación en escritura dual.
 
     python verificar_escritura_dual.py --output output/ --corpus corpus/ --salida logs/
 """
@@ -75,6 +74,27 @@ def urls_en_postgres(fuente: str, url: str, token: str) -> set[str]:
     return set(r.json()["urls"])
 
 
+def evaluar_envio(envio: dict | None, pendientes_contingencia: list[str]) -> tuple[list[str], list[str]]:
+    """(fallas, avisos) según el reporte de envío del updater y los lotes pendientes."""
+    fallas, avisos = [], []
+    if pendientes_contingencia:
+        fallas.append(f"{len(pendientes_contingencia)} lote(s) pendientes en contingencia/: {', '.join(pendientes_contingencia)}")
+    if envio is None:
+        return fallas, avisos            # nada nuevo que enviar hoy
+    if envio.get("contingencia"):
+        fallas.append(f"el envío a N8N falló y quedó en contingencia: {envio.get('error', '')}")
+        return fallas, avisos
+    recibidos = int(envio.get("recibidos", 0))
+    if "enviados" in envio and recibidos != int(envio["enviados"]):
+        fallas.append(f"se enviaron {envio['enviados']:,} notas y N8N recibió {recibidos:,}")
+    contadas = sum(int(envio.get(k, 0)) for k in ("insertados", "ya_existian", "rechazados"))
+    if contadas != recibidos:
+        fallas.append(f"N8N recibió {recibidos:,} pero contó {contadas:,} (insertadas + ya existentes + rechazadas)")
+    if int(envio.get("rechazados", 0)):
+        avisos.append(f"{envio['rechazados']} nota(s) rechazadas por la validación de N8N")
+    return fallas, avisos
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--output", default="output")
@@ -85,59 +105,51 @@ def main() -> int:
     ap.add_argument("--token", default=os.environ.get("N8N_WEBHOOK_TOKEN"))
     a = ap.parse_args()
 
-    if not a.urls_conocidas or not a.token:
-        print("Faltan N8N_URLS_CONOCIDAS_URL / N8N_WEBHOOK_TOKEN: no se puede verificar", file=sys.stderr)
-        return 2
-
-    corpus_csv = _corpus_mas_reciente(Path(a.corpus))
-    if corpus_csv is None:
-        print("No hay corpus CSV: nada que verificar", file=sys.stderr)
-        return 2
-
-    del_dia = urls_del_dia(Path(a.output))
-    aceptadas = urls_aceptadas_por_el_corpus(corpus_csv, del_dia)
+    salida = Path(a.salida)
     pendientes_contingencia = sorted(p.name for p in Path(a.contingencia).glob("*.csv")) if Path(a.contingencia).is_dir() else []
+    envios = sorted(salida.glob("envio_n8n_*.json"))
+    envio = json.loads(envios[-1].read_text(encoding="utf-8")) if envios else None
+    fallas, avisos = evaluar_envio(envio, pendientes_contingencia)
 
+    # Informativo: URLs de hoy en el corpus CSV que PostgreSQL no tiene, por fuente.
     filas, faltan_total = [], 0
-    for fuente in sorted(aceptadas):
-        claves = aceptadas[fuente]
-        try:
-            en_db = urls_en_postgres(fuente, a.urls_conocidas, a.token)
-        except Exception as e:  # N8N caído: es una desviación que hay que ver, no un silencio
-            filas.append({"fuente": fuente, "en_corpus_csv": len(claves), "en_postgres": None,
-                          "faltan": len(claves), "error": str(e), "ejemplos": []})
-            faltan_total += len(claves)
-            continue
-        faltan = sorted(claves - en_db)
-        faltan_total += len(faltan)
-        filas.append({"fuente": fuente, "en_corpus_csv": len(claves), "en_postgres": len(claves) - len(faltan),
-                      "faltan": len(faltan), "error": None, "ejemplos": faltan[:3]})
+    corpus_csv = _corpus_mas_reciente(Path(a.corpus)) if Path(a.corpus).is_dir() else None
+    if corpus_csv and a.urls_conocidas and a.token:
+        aceptadas = urls_aceptadas_por_el_corpus(corpus_csv, urls_del_dia(Path(a.output)))
+        for fuente in sorted(aceptadas):
+            claves = aceptadas[fuente]
+            try:
+                faltan = sorted(claves - urls_en_postgres(fuente, a.urls_conocidas, a.token))
+            except Exception as e:
+                avisos.append(f"no se pudo consultar {fuente} en N8N para el conteo informativo: {e}")
+                continue
+            faltan_total += len(faltan)
+            filas.append({"fuente": fuente, "en_corpus_csv": len(claves), "faltan": len(faltan), "ejemplos": faltan[:3]})
 
-    ok = faltan_total == 0 and not pendientes_contingencia
+    ok = not fallas
     reporte = {
         "fecha_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "corpus_csv": corpus_csv.name,
-        "fuentes_verificadas": len(filas),
-        "urls_verificadas": sum(f["en_corpus_csv"] for f in filas),
-        "urls_faltantes_en_postgres": faltan_total,
-        "lotes_en_contingencia": pendientes_contingencia,
         "resultado": "OK" if ok else "DESVIACION",
-        "detalle": filas,
+        "envio_n8n": envio,
+        "fallas": fallas,
+        "avisos": avisos,
+        "informativo_urls_del_dia_sin_fila_en_postgres": faltan_total,
+        "informativo_detalle": [f for f in filas if f["faltan"]],
     }
-    salida = Path(a.salida)
     salida.mkdir(parents=True, exist_ok=True)
     (salida / f"verificacion_dual_{datetime.now(timezone.utc):%Y%m%d}.json").write_text(
         json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    lineas = [f"## Escritura dual CSV + PostgreSQL: {reporte['resultado']}",
-              f"- Fuentes verificadas: {reporte['fuentes_verificadas']}",
-              f"- URLs del día en el corpus CSV: {reporte['urls_verificadas']:,}",
-              f"- Faltan en PostgreSQL: {faltan_total:,}",
-              f"- Lotes en contingencia: {len(pendientes_contingencia)}"]
-    desviadas = [f for f in filas if f["faltan"]]
-    if desviadas:
-        lineas += ["", "| Fuente | En corpus CSV | Faltan en PostgreSQL | Ejemplo |", "|---|---:|---:|---|"]
-        lineas += [f"| {f['fuente']} | {f['en_corpus_csv']} | {f['faltan']} | {(f['ejemplos'] or [f['error']])[0]} |" for f in desviadas]
+    lineas = [f"## Escritura dual CSV + PostgreSQL: {reporte['resultado']}"]
+    if envio and not envio.get("contingencia"):
+        lineas += [f"- Enviadas a PostgreSQL: {envio.get('enviados', envio.get('recibidos', 0)):,} "
+                   f"(nuevas {envio.get('insertados', 0):,}, ya existían {envio.get('ya_existian', 0):,}, "
+                   f"rechazadas {envio.get('rechazados', 0):,})"]
+    elif envio is None:
+        lineas.append("- Sin notas nuevas para el corpus hoy: nada que enviar")
+    lineas += [f"- Lotes en contingencia: {len(pendientes_contingencia)}",
+               f"- Informativo: {faltan_total:,} URLs de hoy en el CSV sin fila en PostgreSQL (duplicados rechazados por los índices, entre otros)"]
+    lineas += [f"- ❌ {f}" for f in fallas] + [f"- ⚠ {v}" for v in avisos]
     texto = "\n".join(lineas)
     print(texto)
     if os.environ.get("GITHUB_STEP_SUMMARY"):

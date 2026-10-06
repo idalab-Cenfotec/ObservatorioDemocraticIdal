@@ -76,6 +76,24 @@ def url_key(url: str) -> str:
     u = _URL_FRAGMENTO.sub("", u)
     return _URL_BARRAS_FINALES.sub("", u).lower()
 
+EXCLUSIONES_URLS = Path(__file__).resolve().parent / "db" / "exclusiones_urls.txt"
+
+
+def cargar_exclusiones(ruta: Path | None = None) -> set[str]:
+    """url_key de las notas que se eliminaron a propósito de PostgreSQL (duplicados,
+    basura, fuentes extranjeras). El corpus CSV debe omitirlas igual que la base,
+    si no vuelven a entrar cada vez que el scraper las encuentra y las dos copias
+    se desvían. Archivo: db/exclusiones_urls.txt, líneas "fuente<TAB>url_key"."""
+    ruta = Path(ruta) if ruta else EXCLUSIONES_URLS
+    if not ruta.is_file():
+        return set()
+    claves = set()
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        if linea and not linea.startswith("#") and "	" in linea:
+            claves.add(linea.split("	", 1)[1].strip())
+    return claves
+
+
 MESES_ES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
     "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,

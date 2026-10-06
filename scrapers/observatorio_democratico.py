@@ -567,6 +567,9 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
             dataset.append(article)
         if (i + 1) % 50 == 0:
             log_msg(f"   [{i+1}/{len(all_urls)}] extraidos: {len(dataset)}")
+        if (i + 1) % 500 == 0 and dataset:
+            # Respaldo intermedio (como procesar_sitio): una corrida larga que se corta no pierde lo reunido
+            pd.DataFrame(dataset).to_csv(os.path.join("output", f"{name}_backup.csv"), index=False, encoding="utf-8-sig", sep="|")
         time.sleep(0.5)
 
     if dataset:

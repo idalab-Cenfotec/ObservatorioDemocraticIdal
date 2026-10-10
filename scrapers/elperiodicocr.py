@@ -341,7 +341,9 @@ class ElPeriodicoCRScraper(BaseScraper):
             # Construir registro
             # -----------------------------------------------------------
             if not full_text:
-                self.logger.warning(f"Sin texto extraído: {link_data['url']} (título de la página: {await page.title()!r})")
+                titulo_pagina = await page.title()
+                self.registrar_pagina_sin_contenido(titulo_pagina)
+                self.logger.warning(f"Sin texto extraído: {link_data['url']} (título de la página: {titulo_pagina!r})")
                 return None
 
             return {

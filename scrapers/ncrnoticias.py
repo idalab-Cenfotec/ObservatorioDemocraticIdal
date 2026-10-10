@@ -494,7 +494,9 @@ class NCRNoticiasScraper(BaseScraper):
                 )
 
             if not content_div:
-                self.logger.warning(f"Sin contenedor: {link_data['url']} (título de la página: {await page.title()!r})")
+                titulo_pagina = await page.title()
+                self.registrar_pagina_sin_contenido(titulo_pagina)
+                self.logger.warning(f"Sin contenedor: {link_data['url']} (título de la página: {titulo_pagina!r})")
                 return None
 
             full_text = await content_div.evaluate("""
@@ -545,7 +547,9 @@ class NCRNoticiasScraper(BaseScraper):
             full_text = clean_text(full_text) if full_text else ""
 
             if not full_text:
-                self.logger.warning(f"Sin texto: {link_data['url']} (título de la página: {await page.title()!r})")
+                titulo_pagina = await page.title()
+                self.registrar_pagina_sin_contenido(titulo_pagina)
+                self.logger.warning(f"Sin texto: {link_data['url']} (título de la página: {titulo_pagina!r})")
                 return None
 
             return {

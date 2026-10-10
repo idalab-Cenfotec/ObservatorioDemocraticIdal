@@ -15,6 +15,11 @@ contingencia/
 *_backup.csv
 
 # =========================
+# ESTADO LOCAL DEL PIPELINE (SQLite; no persiste en Actions)
+# =========================
+*.db
+
+# =========================
 # PYTHON CACHE
 # =========================
 __pycache__/

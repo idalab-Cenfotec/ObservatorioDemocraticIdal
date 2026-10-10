@@ -5,6 +5,7 @@ Implementa la lógica común: exportación CSV, validación de schema, logs.
 """
 
 import os
+import re
 import csv
 import time
 import asyncio
@@ -51,6 +52,15 @@ SCHEMA_COLUMNS = [
 
 # Longitud mínima de full_text
 MIN_TEXT_LENGTH = 300
+
+# Títulos de las páginas con las que Cloudflare y otros WAF responden en lugar del artículo.
+_PATRON_BLOQUEO = re.compile(
+    r"^\s*(un momento\W*|just a moment\W*|attention required.*|checking your browser.*|"
+    r"access denied.*|403\s*-?\s*forbidden.*|acceso denegado.*)$",
+    re.IGNORECASE,
+)
+# Con tantas páginas de desafío y 0 notas válidas la fuente se reporta como ERROR (bloqueada), no como "OK con 0".
+UMBRAL_BLOQUEOS = 3
 
 
 def setup_logger(source_name: str, log_dir: str = "logs") -> logging.Logger:
@@ -165,6 +175,7 @@ class BaseScraper(ABC):
                             or float(os.environ.get("SCRAPER_MAX_MINUTOS") or 0) or None)
         self._t0 = time.monotonic()
         self.tope_alcanzado = False
+        self.bloqueos = 0   # páginas de desafío anti-bot vistas (ver registrar_pagina_sin_contenido)
         self._cp_validos: list[dict] = []   # guardado parcial: registros ya procesados
         self._cp_n = 0                      # cuántos registros de la lista del scraper ya se procesaron
 
@@ -209,6 +220,14 @@ class BaseScraper(ABC):
         self.logger.info(
             f"Modo {'incremental' if self.cortar_paginacion else 'completo (sin cortar paginación)'}: "
             f"{len(self.known_keys):,} URLs ya conocidas de {self.SOURCE_NAME}")
+
+    def registrar_pagina_sin_contenido(self, titulo: str) -> bool:
+        """Cuenta una página que llegó sin el artículo cuando su título es el de un desafío
+        anti-bot (p. ej. "Un momento…"). Devuelve True si parece un bloqueo."""
+        bloqueada = bool(titulo and _PATRON_BLOQUEO.search(titulo))
+        if bloqueada:
+            self.bloqueos += 1
+        return bloqueada
 
     def tiempo_agotado(self, fraccion: float = 1.0) -> bool:
         """
@@ -415,6 +434,11 @@ class BaseScraper(ABC):
             return {"source": self.SOURCE_NAME, "status": "ERROR", "error": str(e)}
 
         valid, discarded = self._process(raw)
+
+        if not valid and self.bloqueos >= UMBRAL_BLOQUEOS:
+            msg = f"Fuente bloqueada: {self.bloqueos} páginas respondieron con un desafío anti-bot y no se obtuvo ninguna nota"
+            self.logger.error(msg)
+            return {"source": self.SOURCE_NAME, "status": "ERROR", "error": msg}
 
         # Exportar válidos
         output_file = self._get_output_filename()

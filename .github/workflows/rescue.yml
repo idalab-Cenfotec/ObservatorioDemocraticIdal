@@ -26,7 +26,7 @@ env:
 jobs:
   rescue:
     name: 'Rescate — ${{ github.event.inputs.label }}'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: ${{ fromJSON(github.event.inputs.timeout_minutes) }}
 
     steps:
@@ -65,6 +65,8 @@ jobs:
         if: github.event.inputs.playwright == 'false'
         run: pip install -r requirements-legacy.txt
 
+      # OJO: este workflow solo deja los CSV como artefacto (7 días). No consolida ni envía a PostgreSQL;
+      # lo rescatado debe cargarse a mano con corpus_updater.py o el webhook, o usar pipeline.yml.
       - name: Ejecutar scrapers
         run: |
           python pipeline_runner.py \

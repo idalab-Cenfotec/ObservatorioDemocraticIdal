@@ -72,9 +72,9 @@ jobs:
           SCRAPER_MAX_MINUTOS: '45'
         run: |
           python pipeline_runner.py \
-            --only presidencia elperiodicocr sinartdigital monumental \
-                   telediario pulsocr theglobalcr ticosland \
-                   caribeactual puntarenasseoye \
+            --only presidencia sinartdigital monumental telediario \
+                   pulsocr theglobalcr ticosland caribeactual \
+                   puntarenasseoye \
             --workers 4 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -137,8 +137,7 @@ jobs:
           SCRAPER_MAX_MINUTOS: '90'
         run: |
           python pipeline_runner.py \
-            --only ncrnoticias ticotimes trivisioncr latejacr \
-                   rumboeconomico vozdeguanacaste \
+            --only ticotimes latejacr vozdeguanacaste \
             --workers 6 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -201,8 +200,8 @@ jobs:
           SCRAPER_MAX_MINUTOS: '120'
         run: |
           python pipeline_runner.py \
-            --only lareaccioncr noticiasenlineacr puroperiodismo \
-                   larevistacr lavozdegoicoechea \
+            --only lareaccioncr noticiasenlineacr puroperiodismo larevistacr \
+                   lavozdegoicoechea \
             --workers 4 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -313,8 +312,9 @@ jobs:
         run: |
           python pipeline_runner.py \
             --only adiariocr alajuelitasoy buzonderodrigo guanacastealaaltura \
-                   miprensacr radiolapampa radiopuertotv tvsur ustedseinforma \
-                   elcolectivo506 elmundocr el_jilguero                    enlamira elmonitorcr periodicomensaje \
+                   miprensacr radiolapampa radiopuertotv tvsur \
+                   ustedseinforma elcolectivo506 elmundocr el_jilguero \
+                   elmonitorcr periodicomensaje \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -354,9 +354,9 @@ jobs:
       - name: Ejecutar scrapers
         run: |
           python pipeline_runner.py \
-            --only acontecer_cr alajuela_digital amprensa \
-                   crc_89_1 crhoy diarioextra digital506 \
-                   el_jornal el_observador el_sol_de_occidente \
+            --only alajuela_digital amprensa crc_89_1 crhoy \
+                   diarioextra digital506 el_jornal el_observador \
+                   el_sol_de_occidente \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
@@ -396,9 +396,8 @@ jobs:
       - name: Ejecutar scrapers
         run: |
           python pipeline_runner.py \
-            --only el_financiero el_seminario eldelfino \
-                   elnortehoy lanacion larepublica noticias_la_garita_costa_rica \
-                   periodico_mi_tierra sancarlosdigital seminario \
+            --only el_financiero eldelfino elnortehoy lanacion \
+                   larepublica noticias_la_garita_costa_rica periodico_mi_tierra sancarlosdigital \
             --workers 8 \
             --skip-health \
             ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}

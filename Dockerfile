@@ -10,4 +10,5 @@ COPY . .
 
 RUN mkdir -p output logs
 
-CMD ["python", "run_dev.py"]
+ENTRYPOINT ["python", "pipeline_runner.py"]
+CMD ["--skip-health"]

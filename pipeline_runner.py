@@ -40,7 +40,7 @@ from execution_state import (
     get_last_run, print_summary as print_state_summary,
 )
 from health_check import check_one as health_check_one
-from scrapers_registry import SCRAPERS_REGISTRY, LEGACY_SCRAPERS, get_scraper_instance
+from scrapers_registry import SCRAPERS_REGISTRY, LEGACY_SCRAPERS, PAUSED_SCRAPERS, get_scraper_instance
 
 CR_TZ           = timezone(timedelta(hours=-6))
 DEFAULT_WORKERS = 5
@@ -271,6 +271,8 @@ async def run_pipeline(
 # TABLA DE RESULTADOS
 # ─────────────────────────────────────────────────────────────────────────────
 def _print_pipeline_summary(results: list[dict], elapsed: float):
+    paused      = [r for r in results if r.get("status") == "PAUSADO"]
+    results     = [r for r in results if r.get("status") != "PAUSADO"]
     ok          = [r for r in results if r.get("status") == "OK"]
     errors      = [r for r in results if r.get("status") == "ERROR"]
     skipped_hc  = [r for r in results if r.get("status") == "SKIPPED"]
@@ -289,6 +291,7 @@ def _print_pipeline_summary(results: list[dict], elapsed: float):
     print(f"  ⊘ Ya tenían datos hoy  : {len(skipped_inc)}")
     print(f"  ✗ Con error            : {len(errors)}")
     print(f"  ⊘ Omitidos (salud)     : {len(skipped_hc)}")
+    print(f"  ⏸ Pausadas             : {len(paused)}")
     print(f"  ⚠ Con anomalía         : {len(anomaly)}")
     print(f"  {'─'*55}")
     print(f"  Artículos esta corrida : {total_valid:,}")
@@ -324,6 +327,11 @@ def _print_pipeline_summary(results: list[dict], elapsed: float):
         for r in skipped_hc:
             edesc = r.get("error", "")[:45]
             print(f"  ⊘ {r['source']:<23} {'SITIO CAÍDO':<16} {edesc}")
+
+    if paused:
+        print("\n  PAUSADAS (no corren hasta resolver el motivo):")
+        for r in paused:
+            print(f"  ⏸ {r['source']:<23} {r.get('reason','')[:70]}")
 
     # Anomalías
     if anomaly:
@@ -398,7 +406,17 @@ def main():
         # Todos los scrapers: modernos + legacy
         to_run = list(SCRAPERS_REGISTRY.keys()) + list(LEGACY_SCRAPERS)
 
-    print(f"  Scrapers a ejecutar : {len(to_run)}")
+    # Las fuentes pausadas no se ejecutan: quedan en el reporte como PAUSADO, no como error.
+    paused_results = [
+        {"source": n, "status": "PAUSADO", "reason": PAUSED_SCRAPERS[n], "total_valid": 0, "total_discarded": 0}
+        for n in to_run if n in PAUSED_SCRAPERS
+    ]
+    to_run = [n for n in to_run if n not in PAUSED_SCRAPERS]
+    if not to_run and not paused_results:
+        print("  Sin scrapers válidos.")
+        sys.exit(1)
+
+    print(f"  Scrapers a ejecutar : {len(to_run)}  (pausados omitidos: {len(paused_results)})")
     print(f"  Workers paralelos   : {args.workers}")
     print(f"  Modo prueba         : {'SÍ' if args.test else 'No'}")
     print(f"  Health check        : {'No' if args.skip_health else 'SÍ'}")
@@ -418,8 +436,16 @@ def main():
     ))
 
     elapsed = time.time() - t0
+    results = results + paused_results
     _print_pipeline_summary(results, elapsed)
     _save_report(results, log_dir)
+
+    # Código de salida distinto de cero si algún scraper falló: el job queda en rojo y el error se ve
+    # (antes siempre salía en verde y las fuentes rotas pasaban días sin que nadie lo notara).
+    fallidos = [r["source"] for r in results if r.get("status") == "ERROR"]
+    if fallidos:
+        print(f"  ✗ Scrapers con error: {', '.join(fallidos)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

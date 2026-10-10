@@ -9,31 +9,27 @@ Cumple con el **Estándar de Estructura y Validación de Datos v1.0**.
 # Estructura del Proyecto
 
 ```text
-ScrapingObservatorio/
+ObservatorioDemocraticIdal/
 │
-├── main.py
-├── requirements.txt
-├── Dockerfile
-├── README.md
+├── pipeline_runner.py        # orquestador (ejecuta los scrapers en paralelo)
+├── scrapers_registry.py      # qué fuentes existen, cuáles están pausadas
+├── corpus_updater.py         # corpus CSV + envío a PostgreSQL vía N8N
+├── corpus_builder.py         # construye el corpus desde cero
+├── corpus_consolidator.py    # reconstruye el corpus a partir de las versiones diarias
+├── output_cleaner.py         # validación y limpieza de los CSV
+├── verificar_escritura_dual.py
+├── health_check.py
+├── execution_state.py        # historial local en SQLite (no se versiona)
+├── requirements.txt / requirements-legacy.txt / Dockerfile
 │
-├── scrapers/
-│   ├── __init__.py
-│   ├── base_scraper.py
-│   ├── elperiodicocr.py
-│   ├── teletica.py
-│   ├── repretel.py
-│   ├── acontecer_cr.py
-│   ├── observatorio.py
-│   ├── observatorio_adapter.py
-│   └── ...
+├── scrapers/                 # un archivo por fuente + base_scraper.py, legacy_adapter.py, topes.py
+├── db/                       # migraciones SQL y exclusiones_urls.txt
+├── google/                   # módulo falso google.colab para ejecutar los scripts legacy fuera de Colab
+├── tests/                    # pruebas sin red (python -m unittest discover tests)
+├── .github/workflows/        # pipeline.yml (diario), rescue.yml (manual), tests.yml
 │
-├── output/
-│   └── *.csv
-│
-└── logs/
-    ├── *.log
-    ├── *_discarded.csv
-    └── execution_report_*.json
+├── output/                   # CSV generados (no se versiona)
+└── logs/                     # logs y reportes (no se versiona)
 ```
 
 ---
@@ -79,7 +75,7 @@ docker build -t observatorio .
 ### Listar scrapers disponibles
 
 ```bash
-docker run --rm observatorio --list
+docker run --rm observatorio --status
 ```
 
 ### Ejecutar todos los scrapers
@@ -111,31 +107,31 @@ docker run --rm observatorio --only noticiasenlineacr --test
 ## Ejecutar todos los scrapers
 
 ```bash
-python main.py
+python pipeline_runner.py
 ```
 
 ## Ejecutar un scraper específico
 
 ```bash
-python main.py --only elperiodicocr
+python pipeline_runner.py --only elperiodicocr
 ```
 
 ## Ejecutar varios scrapers
 
 ```bash
-python main.py --only elperiodicocr teletica repretel
+python pipeline_runner.py --only elperiodicocr teletica repretel
 ```
 
 ## Listar scrapers disponibles
 
 ```bash
-python main.py --list
+python pipeline_runner.py --status
 ```
 
 ## Modo prueba
 
 ```bash
-python main.py --only noticiasenlineacr --test
+python pipeline_runner.py --only noticiasenlineacr --test
 ```
 
 ---
@@ -203,6 +199,27 @@ Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `s
 
 ---
 
+
+# Fuentes pausadas
+
+`scrapers_registry.PAUSED_SCRAPERS` lista las fuentes que no corren en el pipeline diario hasta resolver su causa
+(bloqueo de Cloudflare o de la IP del runner, timeouts, sitio inalcanzable). Su código y las notas ya cargadas se
+conservan. Aparecen como `PAUSADO` en el reporte, no como error. Para reintegrar una: arreglar la causa, quitarla de
+`PAUSED_SCRAPERS` y agregarla a un grupo de `pipeline.yml` (la prueba `tests/test_consistencia.py` exige que
+registro = workflow + pausadas).
+
+Un scraper que reciba la página de desafío de un WAF ("Un momento…") 3 o más veces sin obtener notas termina como
+`ERROR` (fuente bloqueada) en vez de "OK con 0 notas", y `pipeline_runner.py` sale con código 1 si algún scraper falla.
+
+# Pruebas
+
+```bash
+python -m unittest discover tests
+```
+
+Corren sin red ni base de datos y también se ejecutan en cada push (`.github/workflows/tests.yml`).
+
+---
 
 # Validaciones Automáticas
 
@@ -312,26 +329,14 @@ MAX_PAGES_PER_SECTION = 319
 
 ---
 
-## Mundiario
+## Noticias En Línea
 
-Mundiario se maneja como una única sección.
+Tiene modo prueba debido al gran volumen de artículos.
 
-El sitio prácticamente no publica contenido nuevo desde 2024, por lo que el scraper se utiliza principalmente para recolección histórica.
-
----
-
-## NCR Noticias y Noticias En Línea
-
-Poseen modo prueba debido al gran volumen de artículos.
-
-Ejemplos:
+Ejemplo:
 
 ```bash
-python main.py --only ncrnoticias --test
-```
-
-```bash
-python main.py --only noticiasenlineacr --test
+python pipeline_runner.py --only noticiasenlineacr --test
 ```
 
 ---

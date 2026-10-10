@@ -119,12 +119,9 @@ class GenteOPAScraper(BaseScraper):
     async def _scrape_async(self) -> list[dict]:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
+            # Sin user_agent propio: el hosting responde 403 a la cadena fija "Chrome/124" y 200 al
+            # User-Agent real de Chromium.
             context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
                 locale="es-CR",
                 viewport={"width": 1280, "height": 900},
             )

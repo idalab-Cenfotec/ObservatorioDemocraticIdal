@@ -87,6 +87,11 @@ MAX_TEXT_LENGTH = 30000
 # Limpiador drástico de Emojis que arruinan la codificación
 STRICT_PATTERN = re.compile(r'[^\w\s\.,;:!?\-\(\)áéíóúÁÉÍÓÚñÑüÜ"\'/¿¡]', flags=re.UNICODE)
 
+# User-Agent que se identifica. Varios hostings (radiolapampa, guanacastealaaltura) responden 403 a un
+# "Chrome/124" suelto, que reconocen como navegador falso, y 200 a un cliente que dice quién es.
+USER_AGENT = "ObservatorioDemocratico/1.0 (investigacion academica, IDALab UCenfotec)"
+
+
 def log_msg(msg):
     if LOG_TXT:
         with open(LOG_TXT, "a", encoding="utf-8") as f:
@@ -179,7 +184,7 @@ def procesar_sitio(site_dict, max_pages=None):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": USER_AGENT,
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "es-CR,es;q=0.9,en;q=0.8",
         # No Accept-Encoding: let requests advertise only gzip/deflate which it can decode
@@ -421,7 +426,7 @@ def procesar_periodicomensaje(max_pages_per_cat=None):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "es-CR,es;q=0.9,en;q=0.8",
         "DNT": "1",

@@ -206,6 +206,7 @@ Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `s
 `limpieza_relleno.py` quita del `full_text` lo que cada sitio repite en todas sus notas (invitaciones a suscribirse,
 datos de contacto, biografías de autor, widgets) y descarta las notas de plantilla ("lorem ipsum"). Se aplica en
 `output_cleaner.clean_dataframe`, es decir, a todo lo que se envía a PostgreSQL; `raw_text` conserva el original.
+Para `adiariocr` también se descarta la publicidad de apuestas disfrazada de nota (título comercial con 4 o más términos de apuestas en el texto, o texto casi todo de apuestas con lenguaje comercial del sector); una noticia con un anuncio dentro, o con un titular noticioso (sanciones, bingos benéficos, etc.), se conserva.
 Las reglas son por fuente y deliberadamente específicas (mejor dejar relleno que recortar contenido). Para agregar una:
 copiar el relleno exacto de 2 o 3 notas reales, escribir el patrón en `REGLAS` y agregar el caso a
 `tests/test_limpieza_relleno.py`.

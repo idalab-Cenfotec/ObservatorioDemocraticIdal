@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 
 from tests._util import RAIZ  # noqa: F401
-from limpieza_relleno import MIN_RESTANTE, es_plantilla, idioma_de_fuente, idioma_de_nota, limpiar_relleno
+from limpieza_relleno import MIN_RESTANTE, es_plantilla, es_publicidad_apuestas, idioma_de_fuente, idioma_de_nota, limpiar_relleno
 from output_cleaner import clean_dataframe
 
 CUERPO = "La Municipalidad informó que las obras avanzan según lo previsto y que se mantendrá el cierre parcial. " * 5
@@ -73,6 +73,35 @@ class TestLimpiezaRelleno(unittest.TestCase):
         out, stats, inferidas = clean_dataframe(pd.DataFrame([fila]), verbose=False)
         self.assertEqual(out.iloc[0]["publication_date"], "2026-10-05 11:00:00")
         self.assertEqual(list(inferidas["url"]), ["https://a.cr/x"])
+
+    def test_publicidad_de_apuestas_se_descarta_solo_en_su_fuente(self):
+        anuncio = ("Los casinos online y las casas de apuestas ofrecen bonos. Las apuestas deportivas en vivo permiten apostar "
+                   "durante el partido; la ruleta y el blackjack siguen siendo los juegos favoritos de los jugadores. ") * 3
+        self.assertTrue(es_publicidad_apuestas("adiariocr", "Casas de apuestas y casino online en Costa Rica", anuncio))
+        self.assertTrue(es_publicidad_apuestas("adiariocr", "Registro y verificación de cuenta en DoradoBet Costa Rica", anuncio))
+        self.assertFalse(es_publicidad_apuestas("crhoy", "Casas de apuestas y casino online en Costa Rica", anuncio))
+
+    def test_noticia_con_un_anuncio_no_se_pierde(self):
+        anuncio = "Casinos online, casas de apuestas, apuestas deportivas y ruleta con bonos. " * 4
+        # noticia real (guarda por título) aunque el texto traiga un bloque de anuncio
+        self.assertFalse(es_publicidad_apuestas("adiariocr", "Hacienda sanciona por más de 361 millones a 10 casinos", anuncio))
+        self.assertFalse(es_publicidad_apuestas("adiariocr", "Juegue bingo en el Blue Valley School y ayude a Proyecto Daniel", anuncio))
+        # noticia cualquiera con un par de menciones: no llega al mínimo de términos
+        self.assertFalse(es_publicidad_apuestas("adiariocr", "Ministro presenta presupuesto 2027", CUERPO + " Casa de apuestas patrocina el evento."))
+        # opinión sobre apuestas sin lenguaje comercial del sector
+        opinion = "La ética de apostar sobre la realidad. Las apuestas sobre eventos futuros, las apuestas y las cuotas. " * 8
+        self.assertFalse(es_publicidad_apuestas("adiariocr", "Polymarket y la ética de apostar sobre la realidad", opinion))
+
+    def test_clean_dataframe_descarta_publicidad_de_apuestas(self):
+        anuncio = "Los casinos online y las casas de apuestas ofrecen bonos. Las apuestas deportivas en vivo. La ruleta y el blackjack. " * 4
+        base = {"publication_date": "2026-10-05 10:00:00", "scraping_date": "2026-10-05 11:00:00", "section": "Economía", "language": "es", "source": "adiariocr"}
+        df = pd.DataFrame([
+            {**base, "url": "https://a.cr/1", "title": "Casinos online en Costa Rica", "full_text": anuncio},
+            {**base, "url": "https://a.cr/2", "title": "Ministro presenta presupuesto 2027", "full_text": CUERPO},
+        ])
+        out, stats, _ = clean_dataframe(df, verbose=False)
+        self.assertEqual(stats["dropped_publicidad_apuestas"], 1)
+        self.assertEqual(list(out["url"]), ["https://a.cr/2"])
 
     def test_clean_dataframe_corrige_el_idioma(self):
         base = {"url": "", "title": "Titulo", "publication_date": "2026-10-05 10:00:00", "scraping_date": "2026-10-05 11:00:00",

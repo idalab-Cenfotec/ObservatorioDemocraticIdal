@@ -123,6 +123,54 @@ def idioma_de_nota(fuente: str, texto: str) -> str:
     return "en" if mejor.lang == "en" and mejor.prob >= PROB_MINIMA_INGLES else base
 
 
+# Publicidad de apuestas disfrazada de nota (contenido patrocinado/SEO de casinos y casas de apuestas).
+# Solo se aplica a las fuentes listadas en FUENTES_CON_PUBLICIDAD_APUESTAS: ahí aparece con regularidad, y en el
+# resto de los medios una nota sobre casinos o apuestas es noticia (sanciones, lotería ilegal, torneos).
+FUENTES_CON_PUBLICIDAD_APUESTAS = {"adiariocr"}
+
+_APUESTAS_TITULO = re.compile(
+    r"casinos?\s+(online|en l[ií]nea|usan)|casas?\s+de\s+apuestas|apuestas\s+(deportivas|en\s+vivo|online)|"
+    r"\b1\s?win\b|doradobet|bet365|betsson|\bruleta\b|blackjack|juegos?\s+(online|de\s+azar)|tragamonedas|"
+    r"p[oó]ker\s+online|sitios\s+de\s+apuestas|pron[oó]sticos\s+deportivos|apostar\s+(online|en\s+l[ií]nea)",
+    re.IGNORECASE,
+)
+_APUESTAS_TERMINO = re.compile(
+    r"\b(casinos?|apuestas?|blackjack|ruleta|tragamonedas|p[oó]ker|slots?|jackpot|1\s?win|doradobet|bet365|betsson|"
+    r"cuotas|pron[oó]sticos?|apostadores?|casas?\s+de\s+apuestas)\b",
+    re.IGNORECASE,
+)
+_APUESTAS_COMERCIAL = re.compile(
+    r"(casinos?\s+(online|en l[ií]nea)|casas?\s+de\s+apuestas|plataformas?\s+de\s+(apuestas|juego)|apuestas\s+online|"
+    r"sitios\s+de\s+apuestas|operadores?\s+de\s+(juego|apuestas)|juego\s+responsable)",
+    re.IGNORECASE,
+)
+# Si el título trae un hecho noticioso, la nota se conserva aunque hable de casinos o apuestas.
+_NOTICIA_TITULO = re.compile(
+    r"sanciona|multa|clausur|allan|decomis|detien|detenid|OIJ|Hacienda|Sala IV|Fiscal[ií]a|juez|tribunal|condena|"
+    r"proyecto de ley|diputad|municipalidad|robo|asalto|homicidio|denuncia|investiga|bingo|rifa|caridad|benéfic|"
+    r"fundaci[oó]n|loter[ií]a|JPS|Junta de Protecci[oó]n",
+    re.IGNORECASE,
+)
+MIN_TERMINOS_TITULO = 4     # título comercial + al menos tantos términos en el texto
+MIN_TERMINOS_SOLO_TEXTO = 14  # sin señal en el título: el texto debe ser casi todo sobre apuestas
+MIN_TERMINOS_COMERCIALES = 3
+
+
+def es_publicidad_apuestas(fuente: str, titulo: str, texto: str) -> bool:
+    """True si una nota de una fuente con patrocinios de casinos es publicidad de apuestas y no una noticia."""
+    if fuente not in FUENTES_CON_PUBLICIDAD_APUESTAS or not isinstance(texto, str):
+        return False
+    titulo = titulo if isinstance(titulo, str) else ""
+    if _NOTICIA_TITULO.search(titulo):
+        return False
+    terminos = len(_APUESTAS_TERMINO.findall(texto))
+    if _APUESTAS_TITULO.search(titulo):
+        return terminos >= MIN_TERMINOS_TITULO
+    # Sin señal en el título: el texto debe ser casi todo sobre apuestas Y con lenguaje comercial del sector
+    # (una columna de opinión o una noticia sobre apuestas no cumple lo segundo).
+    return terminos >= MIN_TERMINOS_SOLO_TEXTO and len(_APUESTAS_COMERCIAL.findall(texto)) >= MIN_TERMINOS_COMERCIALES
+
+
 # Notas que son contenido de plantilla del tema del sitio (no noticias).
 _PLANTILLA = re.compile(r"lorem ipsum|mauris mattis auctor cursus", re.IGNORECASE)
 

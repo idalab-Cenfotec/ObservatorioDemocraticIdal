@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from limpieza_relleno import es_plantilla, idioma_de_nota, limpiar_relleno
+from limpieza_relleno import es_plantilla, es_publicidad_apuestas, idioma_de_nota, limpiar_relleno
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -450,6 +450,12 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
     plantilla = df["full_text"].apply(lambda t: es_plantilla(t) if isinstance(t, str) else False)
     stats["dropped_plantilla"] = int(plantilla.sum())
     df = df[~plantilla].copy()
+
+    # 5c. Descartar publicidad de apuestas disfrazada de nota (solo fuentes con patrocinios de casinos)
+    publicidad = pd.Series(
+        [es_publicidad_apuestas(f, t, x) for f, t, x in zip(df["source"], df["title"], df["full_text"])], index=df.index)
+    stats["dropped_publicidad_apuestas"] = int(publicidad.sum())
+    df = df[~publicidad].copy()
 
     # 6. Deduplicar por URL
     log("  Deduplicando por URL...")

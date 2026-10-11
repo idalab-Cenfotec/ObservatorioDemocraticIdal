@@ -78,6 +78,9 @@ def url_key(url: str) -> str:
     u = _URL_FRAGMENTO.sub("", u)
     return _URL_BARRAS_FINALES.sub("", u).lower()
 
+# Una publication_date anterior a este año se considera error del sitio, no una fecha real.
+FECHA_MINIMA_VALIDA = "1990"
+
 EXCLUSIONES_URLS = Path(__file__).resolve().parent / "db" / "exclusiones_urls.txt"
 
 
@@ -395,6 +398,11 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
         return normalize_date(str(row["publication_date"]) if row["publication_date"] else "", ref)
 
     df["publication_date"] = df.apply(_norm_pub, axis=1)
+
+    # Fechas imposibles (p. ej. 1969/1979 por un atributo <time> en cero del sitio): se tratan como fecha
+    # no interpretable y caen al respaldo de scraping_date, marcadas como inferidas.
+    df.loc[df["publication_date"].astype(str).str[:4].str.isdigit()
+           & (df["publication_date"].astype(str).str[:4] < FECHA_MINIMA_VALIDA), "publication_date"] = "NULL"
 
     # Fallback: si publication_date sigue siendo NULL, usar scraping_date
     null_pub = df["publication_date"] == "NULL"

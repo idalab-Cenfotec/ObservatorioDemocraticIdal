@@ -66,6 +66,14 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertEqual(idioma_de_nota("puroperiodismo", CUERPO), "es")
         self.assertEqual(idioma_de_nota("ticosland", CUERPO), "en")      # fuentes en inglés: siempre inglés
 
+    def test_fecha_imposible_cae_a_scraping_date_como_inferida(self):
+        fila = {"source": "periodicomensaje", "url": "https://a.cr/x", "title": "Titulo", "section": "Noticias",
+                "full_text": CUERPO, "language": "es", "scraping_date": "2026-10-05 11:00:00",
+                "publication_date": "1979-12-31 18:00:00"}
+        out, stats, inferidas = clean_dataframe(pd.DataFrame([fila]), verbose=False)
+        self.assertEqual(out.iloc[0]["publication_date"], "2026-10-05 11:00:00")
+        self.assertEqual(list(inferidas["url"]), ["https://a.cr/x"])
+
     def test_clean_dataframe_corrige_el_idioma(self):
         base = {"url": "", "title": "Titulo", "publication_date": "2026-10-05 10:00:00", "scraping_date": "2026-10-05 11:00:00",
                 "section": "Noticias", "full_text": CUERPO}

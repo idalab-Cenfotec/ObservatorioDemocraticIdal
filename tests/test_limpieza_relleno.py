@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 
 from tests._util import RAIZ  # noqa: F401
-from limpieza_relleno import MIN_RESTANTE, es_plantilla, idioma_de_fuente, limpiar_relleno
+from limpieza_relleno import MIN_RESTANTE, es_plantilla, idioma_de_fuente, idioma_de_nota, limpiar_relleno
 from output_cleaner import clean_dataframe
 
 CUERPO = "La Municipalidad informó que las obras avanzan según lo previsto y que se mantendrá el cierre parcial. " * 5
@@ -58,6 +58,13 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertEqual(idioma_de_fuente("costaricastar"), "en")
         self.assertEqual(idioma_de_fuente("larevistacr"), "es")
         self.assertEqual(idioma_de_fuente("cualquier_otra"), "es")
+
+    def test_nota_en_ingles_en_medio_en_espanol_se_respeta(self):
+        ingles = ("Welcome to Costa Rica, President Barack Obama. There is a pleasant, symbolic and historical coincidence "
+                  "that you are visiting our country at a time when the two nations celebrate their long friendship. ") * 4
+        self.assertEqual(idioma_de_nota("puroperiodismo", ingles), "en")
+        self.assertEqual(idioma_de_nota("puroperiodismo", CUERPO), "es")
+        self.assertEqual(idioma_de_nota("ticosland", CUERPO), "en")      # fuentes en inglés: siempre inglés
 
     def test_clean_dataframe_corrige_el_idioma(self):
         base = {"url": "", "title": "Titulo", "publication_date": "2026-10-05 10:00:00", "scraping_date": "2026-10-05 11:00:00",

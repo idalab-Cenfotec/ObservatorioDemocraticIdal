@@ -101,6 +101,28 @@ def idioma_de_fuente(fuente: str) -> str:
     return IDIOMA_POR_FUENTE.get(fuente, IDIOMA_POR_DEFECTO)
 
 
+# Una nota en inglés dentro de un medio en español (p. ej. un comunicado) sí debe quedar como inglés, pero solo si
+# el detector está casi seguro: langdetect sobre textos cortos o con citas confunde idiomas.
+PROB_MINIMA_INGLES = 0.99
+LARGO_MINIMO_DETECCION = 300
+_MUESTRA_DETECCION = 1500
+
+
+def idioma_de_nota(fuente: str, texto: str) -> str:
+    """Idioma de una nota: el de su fuente, salvo que sea un texto largo que el detector da como inglés
+    con probabilidad >= PROB_MINIMA_INGLES en una fuente en español."""
+    base = idioma_de_fuente(fuente)
+    if fuente in IDIOMA_POR_FUENTE or not isinstance(texto, str) or len(texto) < LARGO_MINIMO_DETECCION:
+        return base
+    try:
+        from langdetect import DetectorFactory, detect_langs
+        DetectorFactory.seed = 0
+        mejor = detect_langs(texto[:_MUESTRA_DETECCION])[0]
+    except Exception:
+        return base
+    return "en" if mejor.lang == "en" and mejor.prob >= PROB_MINIMA_INGLES else base
+
+
 # Notas que son contenido de plantilla del tema del sitio (no noticias).
 _PLANTILLA = re.compile(r"lorem ipsum|mauris mattis auctor cursus", re.IGNORECASE)
 

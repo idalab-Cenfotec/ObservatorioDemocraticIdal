@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from limpieza_relleno import es_plantilla, idioma_de_fuente, limpiar_relleno
+from limpieza_relleno import es_plantilla, idioma_de_nota, limpiar_relleno
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -421,8 +421,8 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
     ]
     stats["relleno_recortado"] = int((antes != df["full_text"]).sum())
 
-    # 3c. Idioma por fuente (ver limpieza_relleno.IDIOMA_POR_FUENTE)
-    idioma = df["source"].map(idioma_de_fuente)
+    # 3c. Idioma: el de la fuente, salvo notas largas que el detector da como inglés casi con certeza
+    idioma = pd.Series([idioma_de_nota(f, t) for f, t in zip(df["source"], df["full_text"])], index=df.index)
     stats["idioma_corregido"] = int((idioma != df["language"]).sum())
     df["language"] = idioma
 

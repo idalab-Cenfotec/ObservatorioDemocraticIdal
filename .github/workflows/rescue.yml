@@ -18,6 +18,18 @@ on:
         description: 'Etiqueta para el artifact (ej: rescue-rapidos)'
         required: false
         default: 'rescue'
+      modo_completo:
+        description: 'Recorrer el listado completo omitiendo lo ya cargado, para traer lo atrasado (true/false)'
+        required: false
+        default: 'false'
+      max_minutos:
+        description: 'Tope de tiempo por scraper en minutos (vacío = sin tope propio; scrapers WordPress/Joomla usan este valor para su límite)'
+        required: false
+        default: ''
+      cargar_a_postgres:
+        description: 'Cargar lo recolectado a PostgreSQL vía N8N al terminar (true/false); si no, solo queda el artefacto'
+        required: false
+        default: 'false'
 
 env:
   PYTHON_VERSION: '3.12'
@@ -65,14 +77,26 @@ jobs:
         if: github.event.inputs.playwright == 'false'
         run: pip install -r requirements-legacy.txt
 
-      # OJO: este workflow solo deja los CSV como artefacto (7 días). No consolida ni envía a PostgreSQL;
-      # lo rescatado debe cargarse a mano con corpus_updater.py o el webhook, o usar pipeline.yml.
       - name: Ejecutar scrapers
+        env:
+          N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          SCRAPER_MODO_COMPLETO: ${{ github.event.inputs.modo_completo == 'true' && '1' || '' }}
+          SCRAPER_MAX_MINUTOS: ${{ github.event.inputs.max_minutos }}
         run: |
           python pipeline_runner.py \
             --only ${{ github.event.inputs.scrapers }} \
             --workers 6 \
             --skip-health
+
+      # Con cargar_a_postgres=true lo rescatado entra a la base con la misma limpieza y filtros del pipeline diario
+      # (cargar_csv_a_postgres.py). Es seguro repetirlo: los índices únicos descartan lo que ya existe.
+      - name: Cargar a PostgreSQL
+        if: ${{ always() && github.event.inputs.cargar_a_postgres == 'true' }}
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+        run: python cargar_csv_a_postgres.py "output/*.csv"
 
       - uses: actions/upload-artifact@v4
         if: always()

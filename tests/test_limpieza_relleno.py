@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 
 from tests._util import RAIZ  # noqa: F401
-from limpieza_relleno import MIN_RESTANTE, es_plantilla, limpiar_relleno
+from limpieza_relleno import MIN_RESTANTE, es_plantilla, idioma_de_fuente, limpiar_relleno
 from output_cleaner import clean_dataframe
 
 CUERPO = "La Municipalidad informó que las obras avanzan según lo previsto y que se mantendrá el cierre parcial. " * 5
@@ -51,6 +51,24 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertTrue(es_plantilla("Mauris mattis auctor cursus. Phasellus tellus tellus"))
         self.assertTrue(es_plantilla("Lorem ipsum dolor sit amet"))
         self.assertFalse(es_plantilla(CUERPO))
+
+    def test_idioma_se_decide_por_la_fuente(self):
+        self.assertEqual(idioma_de_fuente("ticosland"), "en")
+        self.assertEqual(idioma_de_fuente("ticotimes"), "en")
+        self.assertEqual(idioma_de_fuente("costaricastar"), "en")
+        self.assertEqual(idioma_de_fuente("larevistacr"), "es")
+        self.assertEqual(idioma_de_fuente("cualquier_otra"), "es")
+
+    def test_clean_dataframe_corrige_el_idioma(self):
+        base = {"url": "", "title": "Titulo", "publication_date": "2026-10-05 10:00:00", "scraping_date": "2026-10-05 11:00:00",
+                "section": "Noticias", "full_text": CUERPO}
+        df = pd.DataFrame([
+            {**base, "source": "ticosland", "url": "https://a.cr/1", "language": "es"},
+            {**base, "source": "larevistacr", "url": "https://a.cr/2", "language": "en"},
+        ])
+        out, stats, _ = clean_dataframe(df, verbose=False)
+        self.assertEqual(dict(zip(out["source"], out["language"])), {"ticosland": "en", "larevistacr": "es"})
+        self.assertEqual(stats["idioma_corregido"], 2)
 
     def test_clean_dataframe_aplica_las_reglas_y_descarta_plantillas(self):
         sucio, limpio = self.casos()["repretel"]

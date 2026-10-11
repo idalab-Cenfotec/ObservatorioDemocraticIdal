@@ -90,6 +90,17 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
         r"18\+\.\s*The Tico Times may earn a commission from new signups\.\s*$")]},
 }
 
+# Idioma de cada fuente. Los scrapers lo ponían con langdetect nota por nota (falla con textos cortos:
+# marcaba como inglés notas en español) o fijo y mal (ticosland salía como español). Todo el corpus es de medios
+# costarricenses en español salvo estos tres medios en inglés, así que el idioma se decide por la fuente.
+IDIOMA_POR_FUENTE = {"ticotimes": "en", "ticosland": "en", "costaricastar": "en"}
+IDIOMA_POR_DEFECTO = "es"
+
+
+def idioma_de_fuente(fuente: str) -> str:
+    return IDIOMA_POR_FUENTE.get(fuente, IDIOMA_POR_DEFECTO)
+
+
 # Notas que son contenido de plantilla del tema del sitio (no noticias).
 _PLANTILLA = re.compile(r"lorem ipsum|mauris mattis auctor cursus", re.IGNORECASE)
 

@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from limpieza_relleno import es_plantilla, limpiar_relleno
+from limpieza_relleno import es_plantilla, idioma_de_fuente, limpiar_relleno
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -420,6 +420,11 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
         limpiar_relleno(fuente, texto) for fuente, texto in zip(df["source"], df["full_text"])
     ]
     stats["relleno_recortado"] = int((antes != df["full_text"]).sum())
+
+    # 3c. Idioma por fuente (ver limpieza_relleno.IDIOMA_POR_FUENTE)
+    idioma = df["source"].map(idioma_de_fuente)
+    stats["idioma_corregido"] = int((idioma != df["language"]).sum())
+    df["language"] = idioma
 
     # 4. Rellenar section vacia
     log("  Completando secciones vacias...")

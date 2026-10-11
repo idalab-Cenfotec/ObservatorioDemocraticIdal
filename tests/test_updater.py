@@ -85,7 +85,7 @@ class TestUpdater(unittest.TestCase):
             cmd = [sys.executable, "-B", os.path.join(RAIZ, "verificar_escritura_dual.py"),
                    "--output", "output", "--corpus", "corpus", "--salida", "logs", "--contingencia", "contingencia"]
             r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, encoding="utf-8",
-                               env={**os.environ, "N8N_URLS_CONOCIDAS_URL": "", "N8N_WEBHOOK_TOKEN": ""})
+                               env={**os.environ, "N8N_URLS_CONOCIDAS_URL": "", "N8N_WEBHOOK_TOKEN": "", "PYTHONIOENCODING": "utf-8"})
             self.assertEqual(r.returncode, esperado, r.stdout)
 
 

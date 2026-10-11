@@ -49,6 +49,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from limpieza_relleno import es_plantilla, limpiar_relleno
+
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
@@ -411,6 +413,14 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
         df[col] = df[col].apply(lambda x: strip_html(x) if x else x)
     stats["html_stripped"] = html_stripped
 
+    # 3b. Quitar el relleno que cada sitio repite en todas sus notas (ver limpieza_relleno.py)
+    log("  Quitando relleno de los sitios...")
+    antes = df["full_text"].copy()
+    df["full_text"] = [
+        limpiar_relleno(fuente, texto) for fuente, texto in zip(df["source"], df["full_text"])
+    ]
+    stats["relleno_recortado"] = int((antes != df["full_text"]).sum())
+
     # 4. Rellenar section vacia
     log("  Completando secciones vacias...")
     empty_sec = df["section"].isna() | df["section"].astype(str).str.strip().isin(["", "None", "nan"])
@@ -422,6 +432,11 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
     no_title = df["title"].isna() | df["title"].astype(str).str.strip().isin(["", "None", "nan"])
     stats["dropped_no_title"] = int(no_title.sum())
     df = df[~no_title].copy()
+
+    # 5b. Descartar notas de plantilla ("lorem ipsum" del tema del sitio)
+    plantilla = df["full_text"].apply(lambda t: es_plantilla(t) if isinstance(t, str) else False)
+    stats["dropped_plantilla"] = int(plantilla.sum())
+    df = df[~plantilla].copy()
 
     # 6. Deduplicar por URL
     log("  Deduplicando por URL...")

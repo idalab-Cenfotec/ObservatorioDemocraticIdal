@@ -17,6 +17,7 @@ ObservatorioDemocraticIdal/
 ├── corpus_builder.py         # construye el corpus desde cero
 ├── corpus_consolidator.py    # reconstruye el corpus a partir de las versiones diarias
 ├── output_cleaner.py         # validación y limpieza de los CSV
+├── limpieza_relleno.py       # reglas por fuente para quitar el relleno del texto
 ├── verificar_escritura_dual.py
 ├── health_check.py
 ├── execution_state.py        # historial local en SQLite (no se versiona)
@@ -199,6 +200,17 @@ Para un scraper nuevo basta usar `self.debe_omitir(url)`, `CorteIncremental`, `s
 
 ---
 
+
+# Limpieza del relleno de los sitios
+
+`limpieza_relleno.py` quita del `full_text` lo que cada sitio repite en todas sus notas (invitaciones a suscribirse,
+datos de contacto, biografías de autor, widgets) y descarta las notas de plantilla ("lorem ipsum"). Se aplica en
+`output_cleaner.clean_dataframe`, es decir, a todo lo que se envía a PostgreSQL; `raw_text` conserva el original.
+Las reglas son por fuente y deliberadamente específicas (mejor dejar relleno que recortar contenido). Para agregar una:
+copiar el relleno exacto de 2 o 3 notas reales, escribir el patrón en `REGLAS` y agregar el caso a
+`tests/test_limpieza_relleno.py`.
+
+---
 
 # Fuentes pausadas
 

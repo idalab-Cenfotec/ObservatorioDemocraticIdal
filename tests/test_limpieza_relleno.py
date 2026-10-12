@@ -74,6 +74,16 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertEqual(out.iloc[0]["publication_date"], "2026-10-05 11:00:00")
         self.assertEqual(list(inferidas["url"]), ["https://a.cr/x"])
 
+    def test_correo_protegido_de_joomla_se_reemplaza_por_una_marca(self):
+        aviso = ("Esta dirección de correo electrónico está siendo protegida contra los robots de spam. "
+                 "Necesita tener JavaScript habilitado para poder verlo.")
+        sucio = CUERPO + " Para más información escriba al correo: " + aviso + " o llame al 2222-3333. Segundo contacto: " + aviso
+        limpio = limpiar_relleno("periodicomensaje", sucio)
+        self.assertNotIn("robots de spam", limpio)
+        self.assertEqual(limpio.count("[correo protegido]"), 2)
+        self.assertIn("escriba al correo: [correo protegido] o llame al 2222-3333", limpio)
+        self.assertEqual(limpiar_relleno("crhoy", sucio), sucio)     # solo en la fuente que lo produce
+
     def test_publicidad_de_apuestas_se_descarta_solo_en_su_fuente(self):
         anuncio = ("Los casinos online y las casas de apuestas ofrecen bonos. Las apuestas deportivas en vivo permiten apostar "
                    "durante el partido; la ruleta y el blackjack siguen siendo los juegos favoritos de los jugadores. ") * 3

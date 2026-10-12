@@ -15,6 +15,8 @@ Tipos de regla (por fuente):
   cualquiera el patrón se elimina donde aparezca (frases fijas que a veces quedan a medio texto)
   corte      se elimina desde donde empieza el patrón hasta el final (todo lo que sigue es del sitio:
              listas de otras noticias, widgets)
+  reemplazar el patrón se cambia por un texto fijo para conservar la gramática (p. ej. el aviso de "correo
+             protegido" que el sitio pone donde iba una dirección)
 
 Cómo agregar una regla: copiar el texto exacto del relleno de 2 o 3 notas reales de la fuente, escribir el
 patrón y agregar un caso en tests/test_limpieza_relleno.py. Las reglas son deliberadamente específicas:
@@ -83,6 +85,10 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "acontecer_cr": {"cualquiera": [re.compile(
         r"\s*Apoye al periodismo independiente y objetivo que hace Acontecer\.co\.cr/?\s*con nuestras suscripciones "
         r"solidarias", _I)]},
+    # Joomla esconde los correos con JavaScript: el scraper solo ve este aviso donde iba la dirección
+    "periodicomensaje": {"reemplazar": [(re.compile(
+        r"Esta dirección de correo electrónico está siendo protegida contra los robots de spam\.\s*"
+        r"Necesita tener JavaScript habilitado para poder verlo\."), "[correo protegido]")]},
     "vozdeguanacaste": {"inicio": [re.compile(
         r"^\(Unite a nuestro canal de WhatsApp y recibí las noticias directo en tu cel\)\.\s*")]},
     "ticotimes": {"fin": [re.compile(
@@ -191,4 +197,8 @@ def limpiar_relleno(fuente: str, texto: str) -> str:
             nuevo = patron.sub("", actual, count=0 if tipo == "cualquiera" else 1).strip()
             if nuevo != actual.strip() and len(nuevo) >= MIN_RESTANTE:
                 actual = nuevo
+    for patron, reemplazo in reglas.get("reemplazar", []):
+        nuevo = patron.sub(reemplazo, actual).strip()
+        if nuevo != actual.strip() and len(nuevo) >= MIN_RESTANTE:
+            actual = nuevo
     return actual

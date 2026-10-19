@@ -303,6 +303,12 @@ python corpus_consolidator.py \
 Deja en `--output` el corpus limpio (`corpus_consolidado_clean_<fecha>.csv`), la lista de fechas inferidas y un
 reporte JSON. Con `--dry-run` solo cuenta. Los CSV pesan cientos de MB y no se suben al repositorio.
 
+## Apagado del corpus CSV (SCRUM-29)
+
+La variable del repositorio `ESCRIBIR_CSV=false` apaga la escritura del corpus a CSV y deja PostgreSQL como única
+fuente; sin la variable todo sigue igual. Procedimiento, respaldo del corpus original, reversión y contingencia en
+[`docs/SCRUM-29_apagado_csv.md`](docs/SCRUM-29_apagado_csv.md).
+
 ---
 
 # Archivos Generados

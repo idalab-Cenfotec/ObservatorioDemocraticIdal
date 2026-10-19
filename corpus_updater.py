@@ -27,6 +27,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 from output_cleaner import clean_dataframe, url_key, cargar_exclusiones
+from escritura_csv import debe_escribir_csv
 
 CR_TZ      = timezone(timedelta(hours=-6))
 SEPARATOR  = "|"
@@ -376,6 +377,19 @@ def update_corpus(
         return stats
 
     # ── 7. Guardar nueva versión del corpus ──────────────────────────────────
+    # SCRUM-29: con ESCRIBIR_CSV=false no se crea una versión nueva del corpus
+    # CSV. El último CSV queda congelado como respaldo y sigue sirviendo de
+    # referencia para descartar URLs viejas; lo que se repita después de esa
+    # fecha lo descarta PostgreSQL (ON CONFLICT + índices únicos) y aparece
+    # como "ya existían" en el reporte de envío.
+    if not debe_escribir_csv(webhook_url):
+        _log("Escritura del corpus a CSV apagada (ESCRIBIR_CSV=false): "
+             f"{latest.name} queda congelado; los nuevos van solo a PostgreSQL")
+        guardar_reporte_envio(enviar_nuevos_dual(df_nuevos, webhook_url, webhook_token))
+        _log(f"Artículos nuevos enviados: {len(df_nuevos):,}")
+        stats["output_file"] = None
+        return stats
+
     Path(corpus_dir).mkdir(parents=True, exist_ok=True)
     fecha    = datetime.now(CR_TZ).strftime("%Y%m%d")
     version  = _next_version(corpus_dir, fecha)

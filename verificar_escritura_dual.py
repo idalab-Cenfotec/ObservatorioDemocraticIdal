@@ -29,6 +29,7 @@ import pandas as pd
 import requests
 
 from output_cleaner import url_key
+from escritura_csv import escribir_csv_activo
 
 SEPARATOR = "|"
 
@@ -113,7 +114,10 @@ def main() -> int:
 
     # Informativo: URLs de hoy en el corpus CSV que PostgreSQL no tiene, por fuente.
     filas, faltan_total = [], 0
-    corpus_csv = _corpus_mas_reciente(Path(a.corpus)) if Path(a.corpus).is_dir() else None
+    # SCRUM-29: con el CSV apagado el corpus CSV queda congelado y ya no refleja
+    # lo de hoy, así que esta comparación se omite (los criterios 1 y 2 siguen).
+    csv_activo = escribir_csv_activo()
+    corpus_csv = _corpus_mas_reciente(Path(a.corpus)) if csv_activo and Path(a.corpus).is_dir() else None
     if corpus_csv and a.urls_conocidas and a.token:
         aceptadas = urls_aceptadas_por_el_corpus(corpus_csv, urls_del_dia(Path(a.output)))
         for fuente in sorted(aceptadas):
@@ -135,6 +139,7 @@ def main() -> int:
         "avisos": avisos,
         "informativo_urls_del_dia_sin_fila_en_postgres": faltan_total,
         "informativo_detalle": [f for f in filas if f["faltan"]],
+        "escritura_csv": csv_activo,
     }
     salida.mkdir(parents=True, exist_ok=True)
     (salida / f"verificacion_dual_{datetime.now(timezone.utc):%Y%m%d}.json").write_text(
@@ -147,8 +152,11 @@ def main() -> int:
                    f"rechazadas {envio.get('rechazados', 0):,})"]
     elif envio is None:
         lineas.append("- Sin notas nuevas para el corpus hoy: nada que enviar")
-    lineas += [f"- Lotes en contingencia: {len(pendientes_contingencia)}",
-               f"- Informativo: {faltan_total:,} URLs de hoy en el CSV sin fila en PostgreSQL (duplicados rechazados por los índices, entre otros)"]
+    lineas.append(f"- Lotes en contingencia: {len(pendientes_contingencia)}")
+    if csv_activo:
+        lineas.append(f"- Informativo: {faltan_total:,} URLs de hoy en el CSV sin fila en PostgreSQL (duplicados rechazados por los índices, entre otros)")
+    else:
+        lineas.append("- Escritura a CSV apagada (ESCRIBIR_CSV=false): PostgreSQL es la única fuente; se omite la comparación con el CSV")
     lineas += [f"- ❌ {f}" for f in fallas] + [f"- ⚠ {v}" for v in avisos]
     texto = "\n".join(lineas)
     print(texto)

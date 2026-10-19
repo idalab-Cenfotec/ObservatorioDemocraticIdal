@@ -460,10 +460,13 @@ jobs:
           echo "CSVs disponibles: $(ls output/*.csv 2>/dev/null | wc -l)"
           ls output/*.csv 2>/dev/null || echo "Sin CSVs"
 
+      # SCRUM-29: la variable del repo ESCRIBIR_CSV=false apaga la escritura del corpus
+      # a CSV (PostgreSQL queda como única fuente). Sin la variable, todo sigue igual.
       - name: Construir o actualizar corpus
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
           N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          ESCRIBIR_CSV: ${{ vars.ESCRIBIR_CSV || 'true' }}
         run: |
           mkdir -p corpus/ contingencia/
           if compgen -G "corpus/corpus_observatorio_v*.csv" > /dev/null; then
@@ -486,6 +489,7 @@ jobs:
         env:
           N8N_URLS_CONOCIDAS_URL: ${{ secrets.N8N_URLS_CONOCIDAS_URL }}
           N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+          ESCRIBIR_CSV: ${{ vars.ESCRIBIR_CSV || 'true' }}
         run: python verificar_escritura_dual.py --output output/ --corpus corpus/ --salida logs/
 
       - uses: actions/upload-artifact@v4

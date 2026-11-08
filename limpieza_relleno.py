@@ -50,9 +50,15 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "repretel": {"cualquiera": [re.compile(
         r"\s*Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, "
         r"Repretel\.com, Facebook Live y YouTube de Grupo Repretel Noticias\.")]},
-    "lavozdegoicoechea": {"fin": [re.compile(
-        r"\s*Teléfono:\s*\+506\s*6226-2075\s*Correo:\s*info@lavozdegoicoechea\.com\s*Dirección:\s*San José, Goicoechea, "
-        r"Guadalupe\s*$")]},
+    "lavozdegoicoechea": {
+        # Línea del tema de WordPress al inicio de cada nota: "Published by Redacción on 11 agosto, 2026 11 agosto, 2026"
+        # (la fecha sale repetida y, tras normalizar espacios, a veces pegada: "202611 agosto, 2026")
+        "inicio": [re.compile(
+            r"^Published by [^\n]{1,40}? on \d{1,2} [a-záéíóú]+,\s*\d{4}\s*\d{1,2} [a-záéíóú]+,\s*\d{4}\s*", _I)],
+        "fin": [re.compile(
+            r"\s*Teléfono:\s*\+506\s*6226-2075\s*Correo:\s*info@lavozdegoicoechea\.com\s*Dirección:\s*San José, Goicoechea, "
+            r"Guadalupe\s*$")],
+    },
     "eldelfino": {
         # Biografía del autor + invitación al newsletter, siempre al inicio de la nota
         "inicio": [re.compile(
@@ -62,7 +68,11 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
             r"\s*(?:Este artículo representa el criterio de quien lo firma\.\s*)?Los artículos de opinión publicados no "
             r"reflejan necesariamente la posición editorial de este medio\.\s*Delfino\.CR es un medio independiente, "
             r"abierto a la opinión de sus lectores\.\s*Si desea publicar en Teclado Abierto, consulte nuestra guía para "
-            r"averiguar cómo hacerlo\.\s*$")],
+            r"averiguar cómo hacerlo\.\s*$"),
+            # Variante corta: solo el aviso de opinión, sin la cadena de frases anterior
+            re.compile(
+            r"\s*(?:Este artículo representa el criterio de quien lo firma\.\s*)?Los artículos de opinión publicados no "
+            r"reflejan necesariamente la posición editorial de este medio\.\s*$")],
     },
     "digital506": {"inicio": [re.compile(
         r"^Por Redacción\.\s*Esta nota fue elaborada con asistencia de IA\s*(?:/\s*)?(?:Imagen tomada de internet\s*)?")]},
@@ -79,7 +89,13 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "adiariocr": {"fin": [re.compile(
         r"\s*Proponga su solución\s*Queremos que usted sea parte de la solución\.\s*Coméntenos de qué forma se podría "
         r"mejorar la situación descrita en la nota\.\s*Cada semana destacaremos y le daremos seguimiento a las "
-        r"principales soluciones propuestas por nuestros lectores\.\s*Nombre\s*Su solución\s*$")]},
+        r"principales soluciones propuestas por nuestros lectores\.\s*Nombre\s*Su solución\s*$"),
+        # Enlace a otra nota + invitación a las redes, al final de la nota
+        re.compile(
+        r"\s*También le puede interesar(?: nota del \d{4})?\s*:.{0,300}?Síganos en\s*:?\s*Instagram Facebook X Youtube"
+        r"(?:\s*Tik\s*Tok)?\s*$", _S),
+        # Solo la invitación a las redes, sin enlace a otra nota
+        re.compile(r"\s*Síganos en\s*:?\s*Instagram Facebook X Youtube.{0,300}$", _S)]},
     # "loadmoduleid 212" es un marcador del gestor de módulos del sitio, puede quedar al final o a medio texto
     "guanacastealaaltura": {"cualquiera": [re.compile(r"\s*loadmoduleid\s+\d+")]},
     "acontecer_cr": {"cualquiera": [re.compile(
@@ -89,11 +105,68 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "periodicomensaje": {"reemplazar": [(re.compile(
         r"Esta dirección de correo electrónico está siendo protegida contra los robots de spam\.\s*"
         r"Necesita tener JavaScript habilitado para poder verlo\."), "[correo protegido]")]},
-    "vozdeguanacaste": {"inicio": [re.compile(
-        r"^\(Unite a nuestro canal de WhatsApp y recibí las noticias directo en tu cel\)\.\s*")]},
-    "ticotimes": {"fin": [re.compile(
-        r"\s*Live prediction market odds via Kalshi\.\s*Updates every 60 seconds\.\s*Kalshi is available to US residents "
-        r"18\+\.\s*The Tico Times may earn a commission from new signups\.\s*$")]},
+    "vozdeguanacaste": {
+        "inicio": [re.compile(
+            r"^\(Unite a nuestro canal de WhatsApp y recibí las noticias directo en tu cel\)\.\s*")],
+        # Invitación a la membresía "Semillas" al final de la nota (dos redacciones)
+        "fin": [
+            re.compile(
+                r"\s*Nuestro periodismo existe por y para personas como vos\. Sumate a Semillas.{0,500}?"
+                r"Sumate hoy a Semillas\W*$", _S),
+            re.compile(
+                r"\s*Sumate a Semillas y ayudá a sostener el periodismo local e independiente en Guanacaste\.{0,1}.{0,400}?"
+                r"QUIERO SER PARTE\s*$", _S)],
+    },
+    "ticotimes": {"fin": [
+        re.compile(
+            r"\s*Live prediction market odds via Kalshi\.\s*Updates every 60 seconds\.\s*Kalshi is available to US residents "
+            r"18\+\.\s*The Tico Times may earn a commission from new signups\.\s*$"),
+        # Biografía del autor (columnista de fauna), a veces seguida de sus redes y correo
+        re.compile(r"\s*Vincent Losasso, founder of Guanacaste Wildlife Monitoring.{0,450}$", _S)]},
+    # Biografías de columnistas al final de la nota
+    "costaricastar": {"fin": [
+        re.compile(
+            r"\s*(?:About the Author\s*:?\s*)?Britt Nelson relocated to Costa Rica in 2011 from Florida.{0,800}$", _S),
+        re.compile(
+            r"\s*Article by Shannon Farley\s.{0,700}$", _S),
+        re.compile(
+            r"\s*About the Author\s*:?\s*Allan Garro was incorporated as a lawyer and public notary in 1996\..{0,500}$", _S),
+        # Otras biografías de columnistas
+        re.compile(r"\s*(?:About the Author\s*:?\s*)?Carol Blair Vaughn (?:holds|has written).{0,700}$", _S),
+        re.compile(
+            r"\s*(?:About the Author\s*:?\s*)?(?:[A-Z][a-z]+ Donnelly\s+)?[A-Z][a-z]+ Donnelly has been a life-long "
+            r"enthusiast of Latin American folk culture\..{0,700}$", _S),
+        re.compile(r"\s*Mike Poynton is Owner/Principal of Paradise Social.{0,450}$", _S),
+        # Datos de contacto de anunciantes al final de la nota
+        re.compile(
+            r"\s*(?:If you are in need of immigration assistance )?Laura can be reached by clicking here, Toll[- ]free at "
+            r"1-833-733-6337,? [Ll]ocally(?: at)? or by sending an email to \S*immigrationhelpcr\.com\.?\s*$"),
+        re.compile(
+            r"\s*(?:For more information[^:]{0,100}?|To learn more),?\s*please contact:\s*RE/MAX Ocean Surf and Sun.{0,250}$",
+            _S)],
+        # Restos de HTML del editor (marcador de posición del cursor) que quedaron como texto
+        "cualquiera": [re.compile(r"\s*span data-mce-type'bookmark'[^/]{0,250}?/span")]},
+    # Biografía del autor de la columna, tras una raya de guiones bajos
+    "elmundocr": {"fin": [re.compile(
+        r"\s*_{5,}\s*El autor es .{0,400}$", _S)]},
+    # Avisos de contenido pagado: no son parte de la nota
+    "el_financiero": {"fin": [
+        re.compile(
+            r"\s*Para BRAND VOICE es la unidad de generación de ideas y contenidos de GRUPO NACIÓN.{0,300}?"
+            r"Este contenido fue producido para un anunciante y publicado por Brand Voice\.\s*$", _S),
+        re.compile(
+            r"\s*.Lab de Ideas.\s*es una sección que destaca iniciativas de marcas y empresas en Costa Rica\.\s*"
+            r"El contenido editorial está diseñado para ser útil, y también hay espacio para mensajes comerciales "
+            r"curados, acompañados; diferentes\.\s*$", _S)]},
+    # Pie de las notas de BBC traducidas con IA
+    "el_observador": {"fin": [re.compile(
+        r"\s*Este artículo fue escrito originalmente en inglés y usamos una herramienta de inteligencia artificial para "
+        r"traducirlo\.(?:\s*(?:Un periodista|Periodistas?) de la BBC (?:revisó|revisaron) el texto antes de su "
+        r"publicación\.)?(?:\s*Más información sobre cómo usamos IA\.?)?\s*$")]},
+    # Invitaciones a boletín, WhatsApp y Telegram al final de la nota
+    "lanacion": {"fin": [re.compile(
+        r"\s*¿Sabía que puede recibir El Boletín [^?]{1,60}\?.{0,800}?"
+        r"(?:aquí encontrará el enlace directo \.|en su correo electrónico\.|puede accesarlo aquí \.)\s*$", _S)]},
 }
 
 # Idioma de cada fuente. Los scrapers lo ponían con langdetect nota por nota (falla con textos cortos:

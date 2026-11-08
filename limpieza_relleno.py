@@ -155,7 +155,23 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "larevistacr": {"inicio": [re.compile(
         r"^Asamblea Legislativa de Costa\. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
         r"en archivo de audio\. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica\. "
-        r"Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa\.\s*")]},
+        r"Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa\.\s*")],
+        # Notas republicadas de The Conversation: declaración estándar de conflictos de interés + marca de origen
+        "fin": [
+            # La declaración empieza en su sujeto (nombres propios o "Las personas firmantes"); no en cualquier palabra
+            # anterior, para no llevarse la última oración del artículo cuando esta no termina con punto.
+            re.compile(
+                r"\s+(?:Las personas firmantes|Los autores|Las autoras|"
+                r"(?:(?:[A-ZÁÉÍÓÚÑ]\.|Mª|[A-ZÁÉÍÓÚÑ][\wªº’'-]*),?\s+(?:(?:y|e|de|del|la|las|los|van|von|da|do|di)\s+)*){1,60})"
+                r"\s*(?:no reciben? salarios?|no son asalariad[oa]s|no es asalariad[oa]|no trabajan? para)"
+                r"[^.]{0,200}?ni poseen? acciones, ni reciben? financiaci[oó]n de ninguna compañía u organización que "
+                r"pueda obtener beneficio de este artículo[^.]{0,160}\.\s*Publicado originalmente en The Conversation\s*$"),
+            # El resto de declaraciones es propia de cada autor (fondos, proyectos); solo se quita la marca fija
+            re.compile(r"\s*Publicado originalmente en The Conversation\s*$")]},
+    # Aviso de republicación de una revista de aerolínea, al final de la nota
+    "elcolectivo506": {"fin": [re.compile(
+        r"\s*(?:_{3,}\s*)?(?:A previous|An earlier) version of this (?:piece|article) was published in Nature Landings, "
+        r"(?:the in-flight magazine of Nature Air|Nature Air.?s onboard magazine)\.?\s*$", re.I)]},
     # Biografía del autor de la columna, tras una raya de guiones bajos
     "elmundocr": {"fin": [re.compile(
         r"\s*_{5,}\s*El autor es .{0,400}$", _S)]},

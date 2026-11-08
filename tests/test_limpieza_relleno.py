@@ -148,6 +148,55 @@ class TestLimpiezaRelleno(unittest.TestCase):
         # solo al inicio de la nota
         self.assertEqual(limpiar_relleno("larevistacr", titulares + " " + intro), titulares + " " + intro)
 
+    def test_larevistacr_quita_la_declaracion_estandar_de_the_conversation(self):
+        marca = "Publicado originalmente en The Conversation"
+        estandar = ("no recibe salario, ni ejerce labores de consultoría, ni posee acciones, ni recibe financiación de ninguna "
+                    "compañía u organización que pueda obtener beneficio de este artículo, y ha declarado carecer de vínculos "
+                    "relevantes más allá del cargo académico citado.")
+        cuerpo = CUERPO.strip()
+        # con nombre propio
+        self.assertEqual(limpiar_relleno("larevistacr", f"{cuerpo} Gaizka Fernández Soldevilla {estandar} {marca}"), cuerpo)
+        # con "Las personas firmantes" y plural
+        plural = ("Las personas firmantes no son asalariadas, ni consultoras, ni poseen acciones, ni reciben financiación de "
+                  "ninguna compañía u organización que pueda obtener beneficio de este artículo, y han declarado carecer de "
+                  "vínculos relevantes más allá del cargo académico citado anteriormente.")
+        self.assertEqual(limpiar_relleno("larevistacr", f"{cuerpo} {plural} {marca}"), cuerpo)
+        # varios autores con iniciales y conectores
+        autores = "Adrián Cervera Muñoz, Ana M. López Sobaler y Viviana Loria Kohen"
+        self.assertEqual(limpiar_relleno("larevistacr", f"{cuerpo} {autores} {estandar.replace('no recibe', 'no reciben')} {marca}"), cuerpo)
+
+    def test_larevistacr_no_se_lleva_la_ultima_oracion_si_no_termina_con_punto(self):
+        marca = "Publicado originalmente en The Conversation"
+        estandar = ("no recibe salario, ni ejerce labores de consultoría, ni posee acciones, ni recibe financiación de ninguna "
+                    "compañía u organización que pueda obtener beneficio de este artículo, y ha declarado carecer de vínculos "
+                    "relevantes más allá del cargo académico citado.")
+        cuerpo = CUERPO.strip() + " Se asegure a las generaciones futuras que los bosques seguirán siendo una realidad posible"
+        out = limpiar_relleno("larevistacr", f"{cuerpo} Manuel Esteban Lucas-Borja {estandar} {marca}")
+        self.assertEqual(out, cuerpo)  # conserva "…una realidad posible"; quita solo desde el nombre del autor
+        # el sujeto no absorbe palabras con mayúscula de la oración anterior que sí terminó con punto
+        previo = CUERPO.strip() + " El proyecto fue financiado por el Plan Propio de la Universidad de Almería."
+        self.assertEqual(limpiar_relleno("larevistacr", f"{previo} Elizabeth Gualda Alonso {estandar} {marca}"), previo)
+
+    def test_larevistacr_en_declaraciones_propias_solo_quita_la_marca(self):
+        marca = "Publicado originalmente en The Conversation"
+        propia = "Josep-Maria Arauzo-Carod recibe fondos de Generalitat de Catalunya y el Ministerio de Ciencia e Innovación."
+        cuerpo = CUERPO.strip()
+        self.assertEqual(limpiar_relleno("larevistacr", f"{cuerpo} {propia} {marca}"), f"{cuerpo} {propia}")
+        # la marca solo se quita al final de la nota
+        self.assertEqual(limpiar_relleno("larevistacr", f"{marca} {cuerpo}"), f"{marca} {cuerpo}")
+        self.assertEqual(limpiar_relleno("teletica", f"{cuerpo} {marca}"), f"{cuerpo} {marca}")
+
+    def test_elcolectivo506_quita_el_aviso_de_republicacion(self):
+        cuerpo = CUERPO.strip() + " Mónica Quesada Cordero / El Colectivo 506"
+        for aviso in ("A previous version of this piece was published in Nature Landings, the in-flight magazine of Nature Air.",
+                      "___ A previous version of this piece was published in Nature Landings, the in-flight magazine of Nature Air.",
+                      "An earlier version of this article was published in Nature Landings, Nature Airs onboard magazine."):
+            with self.subTest(aviso=aviso):
+                self.assertEqual(limpiar_relleno("elcolectivo506", f"{cuerpo} {aviso}"), cuerpo)
+        # a mitad de la nota no se toca
+        mitad = "A previous version of this piece was published in Nature Landings, the in-flight magazine of Nature Air. " + CUERPO
+        self.assertEqual(limpiar_relleno("elcolectivo506", mitad), mitad)
+
     def test_plantilla(self):
         self.assertTrue(es_plantilla("Mauris mattis auctor cursus. Phasellus tellus tellus"))
         self.assertTrue(es_plantilla("Lorem ipsum dolor sit amet"))

@@ -126,13 +126,26 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     # Biografías de columnistas al final de la nota
     "costaricastar": {"fin": [
         re.compile(
-            r"\s*About the Author\s*Britt Nelson relocated to Costa Rica in 2011 from Florida.{0,700}?"
-            r"editorial board member\.?\s*$", _S),
+            r"\s*(?:About the Author\s*:?\s*)?Britt Nelson relocated to Costa Rica in 2011 from Florida.{0,800}$", _S),
         re.compile(
             r"\s*Article by Shannon Farley\s.{0,700}$", _S),
         re.compile(
-            r"\s*About the Author:\s*Allan Garro was incorporated as a lawyer and public notary in 1996\..{0,400}?"
-            r"garrolaw\.com\s*$", _S)]},
+            r"\s*About the Author\s*:?\s*Allan Garro was incorporated as a lawyer and public notary in 1996\..{0,500}$", _S),
+        # Otras biografías de columnistas
+        re.compile(r"\s*(?:About the Author\s*:?\s*)?Carol Blair Vaughn (?:holds|has written).{0,700}$", _S),
+        re.compile(
+            r"\s*(?:About the Author\s*:?\s*)?(?:[A-Z][a-z]+ Donnelly\s+)?[A-Z][a-z]+ Donnelly has been a life-long "
+            r"enthusiast of Latin American folk culture\..{0,700}$", _S),
+        re.compile(r"\s*Mike Poynton is Owner/Principal of Paradise Social.{0,450}$", _S),
+        # Datos de contacto de anunciantes al final de la nota
+        re.compile(
+            r"\s*(?:If you are in need of immigration assistance )?Laura can be reached by clicking here, Toll[- ]free at "
+            r"1-833-733-6337,? [Ll]ocally(?: at)? or by sending an email to \S*immigrationhelpcr\.com\.?\s*$"),
+        re.compile(
+            r"\s*(?:For more information[^:]{0,100}?|To learn more),?\s*please contact:\s*RE/MAX Ocean Surf and Sun.{0,250}$",
+            _S)],
+        # Restos de HTML del editor (marcador de posición del cursor) que quedaron como texto
+        "cualquiera": [re.compile(r"\s*span data-mce-type'bookmark'[^/]{0,250}?/span")]},
     # Biografía del autor de la columna, tras una raya de guiones bajos
     "elmundocr": {"fin": [re.compile(
         r"\s*_{5,}\s*El autor es .{0,400}$", _S)]},

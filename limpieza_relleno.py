@@ -50,9 +50,15 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
     "repretel": {"cualquiera": [re.compile(
         r"\s*Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, "
         r"Repretel\.com, Facebook Live y YouTube de Grupo Repretel Noticias\.")]},
-    "lavozdegoicoechea": {"fin": [re.compile(
-        r"\s*Teléfono:\s*\+506\s*6226-2075\s*Correo:\s*info@lavozdegoicoechea\.com\s*Dirección:\s*San José, Goicoechea, "
-        r"Guadalupe\s*$")]},
+    "lavozdegoicoechea": {
+        # Línea del tema de WordPress al inicio de cada nota: "Published by Redacción on 11 agosto, 2026 11 agosto, 2026"
+        # (la fecha sale repetida y, tras normalizar espacios, a veces pegada: "202611 agosto, 2026")
+        "inicio": [re.compile(
+            r"^Published by [^\n]{1,40}? on \d{1,2} [a-záéíóú]+,\s*\d{4}\s*\d{1,2} [a-záéíóú]+,\s*\d{4}\s*", _I)],
+        "fin": [re.compile(
+            r"\s*Teléfono:\s*\+506\s*6226-2075\s*Correo:\s*info@lavozdegoicoechea\.com\s*Dirección:\s*San José, Goicoechea, "
+            r"Guadalupe\s*$")],
+    },
     "eldelfino": {
         # Biografía del autor + invitación al newsletter, siempre al inicio de la nota
         "inicio": [re.compile(

@@ -33,6 +33,16 @@ class TestLimpiezaRelleno(unittest.TestCase):
             with self.subTest(fuente=fuente):
                 self.assertEqual(limpiar_relleno(fuente, sucio), limpio.strip())
 
+    def test_lavozdegoicoechea_quita_la_linea_published_by(self):
+        # Texto real: la fecha sale repetida y, tras normalizar espacios, pegada ("202611 agosto, 2026").
+        for prefijo in ("Published by Redacción on 11 agosto, 202611 agosto, 2026 ",
+                        "Published by Redacción on 5 junio, 2026 5 junio, 2026 "):
+            with self.subTest(prefijo=prefijo):
+                self.assertEqual(limpiar_relleno("lavozdegoicoechea", prefijo + CUERPO), CUERPO.strip())
+        # No toca un "Published by" que esté a mitad de texto
+        medio = CUERPO + " Published by Redacción on 5 junio, 2026 5 junio, 2026 " + CUERPO
+        self.assertEqual(limpiar_relleno("lavozdegoicoechea", medio), medio)
+
     def test_texto_sin_relleno_no_cambia(self):
         for fuente in self.casos():
             with self.subTest(fuente=fuente):

@@ -47,9 +47,15 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
             r"\s*(?:Vea|ea)\s+aquí más información de Mi Prensa\s*,?\s*Juntos Somos más!\s*Horarios y tarifas de servicio "
             r"de ferry a Paquera aquí\s*Visite nuestro canal de Youtube")],
     },
-    "repretel": {"cualquiera": [re.compile(
-        r"\s*Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, "
-        r"Repretel\.com, Facebook Live y YouTube de Grupo Repretel Noticias\.")]},
+    "repretel": {
+        # Invitación a seguir las ediciones, a veces seguida de "Le puede interesar: <titular de otra nota>"
+        "fin": [re.compile(
+            r"\s*Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, "
+            r"Repretel\.com, Facebook Live y YouTube de (?:Grupo Repretel Noticias|Noticias Grupo Repretel)\."
+            r"(?:\s*Le puede interesar:.{0,250})?\s*$", _S)],
+        "cualquiera": [re.compile(
+            r"\s*Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, "
+            r"Repretel\.com, Facebook Live y YouTube de (?:Grupo Repretel Noticias|Noticias Grupo Repretel)\.")]},
     "lavozdegoicoechea": {
         # Línea del tema de WordPress al inicio de cada nota: "Published by Redacción on 11 agosto, 2026 11 agosto, 2026"
         # (la fecha sale repetida y, tras normalizar espacios, a veces pegada: "202611 agosto, 2026")
@@ -72,20 +78,40 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
             # Variante corta: solo el aviso de opinión, sin la cadena de frases anterior
             re.compile(
             r"\s*(?:Este artículo representa el criterio de quien lo firma\.\s*)?Los artículos de opinión publicados no "
-            r"reflejan necesariamente la posición editorial de este medio\.\s*$")],
+            r"reflejan necesariamente la posición editorial de este medio\.\s*$"),
+            # Despedida fija del resumen internacional
+            re.compile(r"\s*¡Gracias por acompañarnos en una entrega más del acontecer internacional!\s*$")],
     },
+    # Aviso de opinión al final de las columnas
+    "pulsocr": {"fin": [re.compile(
+        r"\s*\*?\s*La opinión expresada en este espacio no necesariamente representa la línea editorial de PULSOCR, sino "
+        r"exclusivamente responsabilidad de su autor\.\s*$")]},
+    # Bloque de la página tras el artículo (etiquetas, artículo anterior/siguiente, más del autor, formulario de comentarios)
+    "el_jornal": {"fin": [re.compile(
+        r"\s*Etiquetas.{0,1500}?DEJA UNA RESPUESTA\s*Cancelar respuesta.{0,400}?"
+        r"Guardar mi nombre, correo electrónico y sitio web en este navegador la próxima vez que comente\.\s*$", _S)]},
+    # "Navegación de entradas" + título de la nota anterior/siguiente, al final de la nota
+    "alajuela_digital": {"fin": [re.compile(r"\s*Navegación de entradas\s.{0,500}$", _S)]},
     "digital506": {"inicio": [re.compile(
         r"^Por Redacción\.\s*Esta nota fue elaborada con asistencia de IA\s*(?:/\s*)?(?:Imagen tomada de internet\s*)?")]},
     # Después de "Noticias de X en Whatsapp / en Facebook" el sitio pega titulares de otras notas
-    "caribeactual": {"corte": [re.compile(
-        r"\s*(?:Something went wrong\. Please refresh the page and/or try again\.\s*)?"
-        r"Noticias de [^\n]{1,40}? en Whatsapp\s*Noticias de [^\n]{1,40}? en Facebook.*$", _S)]},
+    "caribeactual": {"corte": [
+        re.compile(
+            r"\s*(?:Something went wrong\. Please refresh the page and/or try again\.\s*)?"
+            r"Noticias de [^\n]{1,40}? en Whatsapp\s*Noticias de [^\n]{1,40}? en Facebook.*$", _S),
+        # Redacción nueva del sitio (desde octubre de 2026): tras ella vienen titulares de otras notas y fechas sueltas
+        re.compile(
+            r"\s*¿Le interesan las noti[a-z]{1,6}s de [^?]{1,40}\?\s*Únase a nuestro grupo de noticias en Whatsapp.*$", _S)]},
     # Notas de BBC News Mundo republicadas: el pie con invitaciones (newsletter, app, redes) cambia de redacción
     "teletica": {"corte": [re.compile(
         r"\s*Haz clic (?:aquí )?para leer más historias de BBC News Mundo\..{0,800}$", _S)],
         "fin": [re.compile(
         r"\s*Suscríbete aquí a nuestro (?:nuevo )?newsletter para recibir cada viernes.{0,600}?"
-        r"Descarga la última versión y actívalas\.?\s*$", _S)]},
+        r"Descarga la última versión y actívalas\.?\s*$", _S),
+        # Invitación de "Buen Día" a repasar las recetas/entrevistas en YouTube, al final de la nota
+        re.compile(
+        r"\s*(?:No olvide mandarnos sus fotos a las redes sociales de 'Buen Día'\.\s*)?Recuerde que (?:también )?puede "
+        r"repasar todas las [^.]{1,80}? en nuestro canal de Youtube\.\s*$")]},
     "adiariocr": {"fin": [re.compile(
         r"\s*Proponga su solución\s*Queremos que usted sea parte de la solución\.\s*Coméntenos de qué forma se podría "
         r"mejorar la situación descrita en la nota\.\s*Cada semana destacaremos y le daremos seguimiento a las "
@@ -124,7 +150,11 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
         # Biografía del autor (columnista de fauna), a veces seguida de sus redes y correo
         re.compile(r"\s*Vincent Losasso, founder of Guanacaste Wildlife Monitoring.{0,450}$", _S)]},
     # Biografías de columnistas al final de la nota
-    "costaricastar": {"fin": [
+    "costaricastar": {
+        # Invitación a publicar notas de prensa de negocios, al inicio de la sección de empresas
+        "inicio": [re.compile(
+            r"^If you would like The Costa Rica Star to publish your business press release, please contact us\s*\.?\s*")],
+        "fin": [
         re.compile(
             r"\s*(?:About the Author\s*:?\s*)?Britt Nelson relocated to Costa Rica in 2011 from Florida.{0,800}$", _S),
         re.compile(
@@ -183,7 +213,11 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
         re.compile(
             r"\s*.Lab de Ideas.\s*es una sección que destaca iniciativas de marcas y empresas en Costa Rica\.\s*"
             r"El contenido editorial está diseñado para ser útil, y también hay espacio para mensajes comerciales "
-            r"curados, acompañados; diferentes\.\s*$", _S)]},
+            r"curados, acompañados; diferentes\.\s*$", _S),
+        # Invitación al podcast, a veces seguida de "LEA MÁS: <titular de otra nota>"
+        re.compile(
+            r"\s*Acceda a todos los capítulos de este podcast en nuestros canales de Youtube y Spotify\."
+            r"(?:\s*LEA MÁS:.{0,300})?\s*$", _S)]},
     # Pie de las notas de BBC traducidas con IA
     "el_observador": {"fin": [re.compile(
         r"\s*Este artículo fue escrito originalmente en inglés y usamos una herramienta de inteligencia artificial para "

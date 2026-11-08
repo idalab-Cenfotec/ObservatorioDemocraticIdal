@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from limpieza_relleno import es_plantilla, es_publicidad_apuestas, idioma_de_nota, limpiar_relleno
+from limpieza_relleno import es_plantilla, es_publicidad_apuestas, es_sin_contenido, idioma_de_nota, limpiar_relleno
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -456,6 +456,12 @@ def clean_dataframe(df: pd.DataFrame, verbose: bool = True) -> tuple[pd.DataFram
         [es_publicidad_apuestas(f, t, x) for f, t, x in zip(df["source"], df["title"], df["full_text"])], index=df.index)
     stats["dropped_publicidad_apuestas"] = int(publicidad.sum())
     df = df[~publicidad].copy()
+
+    # 5d. Descartar notas que son solo el aviso fijo de la fuente (sin contenido propio)
+    sin_contenido = pd.Series(
+        [es_sin_contenido(f, x) for f, x in zip(df["source"], df["full_text"])], index=df.index)
+    stats["dropped_sin_contenido"] = int(sin_contenido.sum())
+    df = df[~sin_contenido].copy()
 
     # 6. Deduplicar por URL
     log("  Deduplicando por URL...")

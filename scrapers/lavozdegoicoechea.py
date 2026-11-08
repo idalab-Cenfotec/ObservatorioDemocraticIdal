@@ -25,6 +25,7 @@ sys.path.insert(
 )
 
 from scrapers.base_scraper import BaseScraper, cerrar_pagina
+from scrapers.lavozdegoicoechea_cuerpo import BODY_SELECTORS, REMOVE_SELECTORS
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -565,39 +566,33 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
             # BODY
             # =================================================
 
-            article = await page.query_selector(
-                "article, "
-                "main, "
-                "div[class*='content'], "
-                "div[class*='post']"
-            )
+            # Solo selectores del cuerpo de la nota (ver lavozdegoicoechea_cuerpo.py): los amplios
+            # arrastraban la página entera. Si ninguno existe, la nota se descarta y se registra.
+            article = None
+
+            for selector in BODY_SELECTORS:
+
+                article = await page.query_selector(
+                    selector
+                )
+
+                if article:
+                    break
 
             if not article:
+
+                self.logger.warning(
+                    f"Sin contenedor del cuerpo: "
+                    f"{link_data['url']}"
+                )
+
                 return None
 
             full_text = await article.evaluate("""
-                (el) => {
+                (el, remove) => {
 
                     const clone =
                         el.cloneNode(true);
-
-                    const remove = [
-
-                        'script',
-                        'style',
-                        'iframe',
-                        'nav',
-
-                        'figure',
-                        'figcaption',
-
-                        '.sharedaddy',
-                        '.comments',
-                        '.related',
-
-                        '.ads',
-                        '.ad',
-                    ];
 
                     remove.forEach(sel => {
 
@@ -638,7 +633,7 @@ class LaVozDeGoicoecheaScraper(BaseScraper):
 
                     return parts.join('\\n\\n');
                 }
-            """)
+            """, REMOVE_SELECTORS)
 
             full_text = clean_text(
                 full_text

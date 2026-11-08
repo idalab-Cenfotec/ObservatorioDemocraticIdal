@@ -43,6 +43,45 @@ class TestLimpiezaRelleno(unittest.TestCase):
         medio = CUERPO + " Published by Redacción on 5 junio, 2026 5 junio, 2026 " + CUERPO
         self.assertEqual(limpiar_relleno("lavozdegoicoechea", medio), medio)
 
+    def finales_reales(self):
+        """Finales de notas reales (biografías de columnistas, avisos de contenido pagado, invitaciones)."""
+        return [
+            ("costaricastar", " About the Author Britt Nelson relocated to Costa Rica in 2011 from Florida, where he served as news editor for the Palatka Daily News, a newspaper owned by the New York Times Regional Newspaper Group (NYT-RNG) for 20 years. Nelson served the NYT-RNG for 18 years in Tennessee, Kentucky, Virginia, North Carolina and Florida as a correspondent, reporter, staff writer, senior staff writer training new reporters, copy editor, page designer, editorial writer, editorial page editor and editorial board member"),
+            ("costaricastar", " Article by Shannon Farley A Southern California native, Shannon Farley writes English-language blogs and handles social media marketing for Enchanting Costa Rica and Profimercadeo, both based in San Jose, Costa Rica. She is a professional journalist who spent an 18-year hiatus in tourism and business management, and has since combined all three talents in her current work. See also for more real estate information – Guide to Real Estate in Costa Rica"),
+            ("costaricastar", " Article by Shannon Farley Shannon Farley writes English-language blogs and handles social media marketing for Enchanting Costa Rica and Profimercadeo in San Jose, Costa Rica."),
+            ("costaricastar", " About the Author: Allan Garro was incorporated as a lawyer and public notary in 1996. He specializes in Litigation, Corporate, and Real Estate Law. He has also acted as an external legal consultant to Congress. He has been the author of more than 100 published English Language articles and can be reached at allan@garrolaw.com"),
+            ("ticotimes", " Vincent Losasso, founder of Guanacaste Wildlife Monitoring, is a biologist who works with camera traps throughout Costa Rica."),
+            ("ticotimes", " Vincent Losasso, founder of Guanacaste Wildlife Monitoring, is a biologist who works with camera traps throughout Costa Rica. Learn more about his projects on facebook or instagram. You can also email him at: vincent@guanacastewildlifemonitoring.com"),
+            ("elmundocr", " __________________ El autor es Licenciado en Relaciones Internacionales. Analista político internacional. Además elabora procesos de capacitación política, desarrollo comunal y administración. maumazu208gmail.com ."),
+            ("elmundocr", " ____________________ El autor es Dr. Derecho Administrativo, Abogado/ Doctor en Derecho Administrativo Máster en Derecho Administrativo y Máster en Derecho Tributario."),
+            ("el_financiero", " Para BRAND VOICE es la unidad de generación de ideas y contenidos de GRUPO NACIÓN para las marcas con distribución en sus plataformas digitales y redes sociales. Este contenido fue producido para un anunciante y publicado por Brand Voice."),
+            ("el_financiero", " ‘Lab de Ideas’ es una sección que destaca iniciativas de marcas y empresas en Costa Rica. El contenido editorial está diseñado para ser útil, y también hay espacio para mensajes comerciales curados, acompañados; diferentes."),
+            ("el_financiero", " ‘Lab de Ideas’es una sección que destaca iniciativas de marcas y empresas en Costa Rica. El contenido editorial está diseñado para ser útil, y también hay espacio para mensajes comerciales curados, acompañados; diferentes."),
+            ("el_observador", " Este artículo fue escrito originalmente en inglés y usamos una herramienta de inteligencia artificial para traducirlo. Un periodista de la BBC revisó el texto antes de su publicación. Más información sobre cómo usamos IA"),
+            ("el_observador", " Este artículo fue escrito originalmente en inglés y usamos una herramienta de inteligencia artificial para traducirlo. Periodistas de la BBC revisaron el texto antes de su publicación. Más información sobre cómo usamos IA."),
+            ("vozdeguanacaste", " Nuestro periodismo existe por y para personas como vos. Sumate a Semillas, el programa de membresías con el que vos podés hacer posible el periodismo local e independiente en Guanacaste: investigaciones rigurosas y reveladoras, coberturas desde los territorios y escucha activa de las comunidades. Además, las personas miembras acceden a beneficios que construyen comunidad. Sumate hoy a Semillas 🌱"),
+            ("vozdeguanacaste", " Sumate a Semillas y ayudá a sostener el periodismo local e independiente en Guanacaste. Tu aporte hace posible investigaciones rigurosas y reveladoras, cobertura desde los territorios y escucha activa de las comunidades. Además, recibís beneficios que construyen comunidad. QUIERO SER PARTE"),
+            ("lanacion", " ¿Sabía que puede recibir El Boletín Manudo en su correo electrónico de forma gratuita? Para eso, regístrese aquí . ¿Ya se unió al canal de WhatsApp La Nación Alajuelense ? Aquí puede hacerlo . Si desea unirse al canal AlajuelenseLN en Telegram , aquí encontrará el enlace directo . El Blog de Alajuelense , Actualidad Rojinegra , puede accesarlo aquí ."),
+            ("lanacion", " ¿Sabía que puede recibir El Boletín Manudo en su correo electrónico de forma gratuita? Para eso, regístrese aquí . Si desea seguir el Blog de Saprissa, Actualidad Morada, aquí encontrará el enlace directo . Además, regístrese en El Boletín Morado para que lo reciba en su correo electrónico."),
+            ("adiariocr", " También le puede interesar: Nuevo documental Groundswell se lanza en el Día Mundial del Ambiente Síganos en: Instagram Facebook X Youtube Tik Tok"),
+            ("adiariocr", " También le puede interesar : Índice Global de Retiro 2026 coloca a Costa Rica en tercer lugar del mundo Síganos en: Instagram Facebook X Youtube Tik Tok"),
+            ("adiariocr", " También le puede interesar nota del 2020: Estudio muestra que productores utilizan plaguicidas prohibidos en Costa Rica Síganos en: Instagram Facebook X Youtube Tik Tok"),
+            ("adiariocr", " Síganos en : Instagram Facebook X Youtube También le puede interesar: La confesión: el abrazo de la misericordia"),
+            ("eldelfino", " Este artículo representa el criterio de quien lo firma. Los artículos de opinión publicados no reflejan necesariamente la posición editorial de este medio."),
+        ]
+
+    def test_finales_reales_se_quitan_y_queda_el_cuerpo(self):
+        for fuente, final in self.finales_reales():
+            with self.subTest(fuente=fuente, final=final[:50]):
+                self.assertEqual(limpiar_relleno(fuente, CUERPO + final), CUERPO.strip())
+
+    def test_la_frase_a_mitad_de_texto_no_se_recorta(self):
+        # Las reglas de biografía/invitación solo actúan al final: si la frase sale a mitad de nota se deja
+        for fuente, final in self.finales_reales():
+            with self.subTest(fuente=fuente, final=final[:50]):
+                texto = CUERPO + final + " " + CUERPO * 4   # mucho texto después: no es un pie
+                self.assertEqual(limpiar_relleno(fuente, texto), texto)
+
     def test_texto_sin_relleno_no_cambia(self):
         for fuente in self.casos():
             with self.subTest(fuente=fuente):

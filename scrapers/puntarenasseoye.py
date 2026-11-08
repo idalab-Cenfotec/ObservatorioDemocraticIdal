@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from playwright.async_api import async_playwright
 from scrapers.base_scraper import BaseScraper, CorteIncremental, cerrar_pagina
+from scrapers.puntarenasseoye_cuerpo import extraer_cuerpo
 
 MONTHS_ES = {
     "enero": "01", "febrero": "02", "marzo": "03", "abril": "04",
@@ -159,17 +160,12 @@ class PuntarenasSeOyeScraper(BaseScraper):
                 date_raw = (await date_el.inner_text()).strip()
             publication_date = parse_pso_date(date_raw) if date_raw else "NULL"
 
-            # Full text: all <p> inside .entry-content
+            # Full text: párrafos de .entry-content, incluidos los que vienen en <div> sueltos
+            # (ver scrapers/puntarenasseoye_cuerpo.py)
             content_div = await page.query_selector("div.entry-content")
             full_text = ""
             if content_div:
-                paras = await content_div.query_selector_all("p")
-                parts = []
-                for p in paras:
-                    txt = (await p.inner_text()).strip()
-                    if txt:
-                        parts.append(txt)
-                full_text = " ".join(parts)
+                full_text = extraer_cuerpo(await content_div.inner_html())
 
             await cerrar_pagina(page)
 

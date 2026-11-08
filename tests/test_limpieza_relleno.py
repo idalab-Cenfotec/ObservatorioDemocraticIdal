@@ -123,6 +123,9 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertEqual(limpiar_relleno("costaricastar", aviso + " " + cuerpo), cuerpo.strip())
         self.assertEqual(limpiar_relleno("costaricastar", aviso + ". " + cuerpo), cuerpo.strip())
         self.assertEqual(limpiar_relleno("costaricastar", aviso.replace("Editors", "Editor’s") + " " + cuerpo), cuerpo.strip())
+        # variantes: "Editors Note" con mayúscula y espacio antes de la coma
+        variante = "By Britt Nelson Editors Note: The views expressed by guest columnists are not necessarily those of The Costa Rica Star , its advertisers, or its staff. "
+        self.assertEqual(limpiar_relleno("costaricastar", variante + cuerpo), "By Britt Nelson " + cuerpo.strip())
         # tras el crédito de la caricatura y del autor: el crédito se conserva, el aviso no
         con_credito = "Cartoon by Clay Jones By Britt Nelson " + aviso + ". " + cuerpo
         esperado = "Cartoon by Clay Jones By Britt Nelson" + " " + cuerpo.strip()

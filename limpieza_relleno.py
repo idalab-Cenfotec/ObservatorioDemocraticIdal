@@ -150,7 +150,7 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
             # Aviso fijo sobre columnistas invitados, al inicio o tras el crédito de la caricatura/autor
             re.compile(
                 r"\s*Editor[’']?s note:\s*The views expressed by guest columnists are not necessarily those of "
-                r"The Costa Rica Star, its advertisers, or its staff\.?")]},
+                r"The Costa Rica Star\s*,\s*its advertisers, or its staff\.?", re.I)]},
     # Presentación fija del audio semanal "Acontecer Legislativo" que antecede a los titulares
     "larevistacr": {"inicio": [re.compile(
         r"^Asamblea Legislativa de Costa\. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "

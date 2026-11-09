@@ -399,6 +399,10 @@ class TestRellenoBoletinesYEnlaces(unittest.TestCase):
         self.assertEqual(limpiar_relleno("caribeactual", f"{self.CUERPO_OIJ} {tel}"), self.CUERPO_OIJ)
         self.assertEqual(limpiar_relleno("caribeactual", f"{self.CUERPO_OIJ} {nb.join(self.RECUERDE.split(chr(32)))}"), self.CUERPO_OIJ)
 
+    def test_palabra_partida_por_un_espacio(self):
+        roto = self.TELEFONO.replace("comunique", "com unique")
+        self.assertEqual(limpiar_relleno("caribeactual", f"{self.CUERPO_OIJ} {roto}"), self.CUERPO_OIJ)
+
     def test_variante_con_correo(self):
         texto = (f"{self.CUERPO_OIJ} Cualquier información que pueda brindar es indispensable que se comunique al teléfono 800-8000645 "
                  "o al correo cicooij@poder-judicial.go.cr del Centro de Información Confidencial del OIJ.")

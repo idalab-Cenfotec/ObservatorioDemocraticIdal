@@ -323,6 +323,53 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertEqual(list(out["url"]), ["https://a.cr/1"])
         self.assertEqual(out.iloc[0]["full_text"], limpio.strip())
 
+class TestRellenoGrupoA(unittest.TestCase):
+    """Cierres/encabezados fijos de varias fuentes (textos tomados de notas reales)."""
+
+    def verifica(self, fuente, relleno, al_final=True):
+        sucio = CUERPO.strip() + " " + relleno if al_final else relleno + " " + CUERPO.strip()
+        self.assertEqual(limpiar_relleno(fuente, sucio).strip(), CUERPO.strip())
+
+    def test_repretel_dos_redacciones_y_le_puede_interesar(self):
+        base = "Si quiere estar atento a otras informaciones, puede seguir las ediciones de Noticias Repretel en Canal 6, Repretel.com, Facebook Live y YouTube de "
+        self.verifica("repretel", base + "Noticias Grupo Repretel.")
+        self.verifica("repretel", base + "Grupo Repretel Noticias.")
+        self.verifica("repretel", base + "Grupo Repretel Noticias. Le puede interesar: Otro titular de una nota distinta")
+
+    def test_eldelfino_cierre(self):
+        self.verifica("eldelfino", "¡Gracias por acompañarnos en una entrega más del acontecer internacional!")
+
+    def test_pulsocr_aviso_de_opinion(self):
+        self.verifica("pulsocr", "*La opinión expresada en este espacio no necesariamente representa la línea editorial de PULSOCR, sino exclusivamente responsabilidad de su autor.")
+
+    def test_el_jornal_bloque_de_pie(self):
+        self.verifica("el_jornal", "Etiquetas tema uno tema dos Facebook Twitter Pinterest WhatsApp Artículo anterior Otro titular Artículo siguiente Más titulares "
+                      "DEJA UNA RESPUESTA Cancelar respuesta Tu dirección de correo electrónico no será publicada. "
+                      "Guardar mi nombre, correo electrónico y sitio web en este navegador la próxima vez que comente.")
+
+    def test_alajuela_digital_navegacion(self):
+        self.verifica("alajuela_digital", "Navegación de entradas Agenda: otra nota anterior del sitio ¡Asista!")
+
+    def test_teletica_invitacion_a_youtube(self):
+        self.verifica("teletica", "No olvide mandarnos sus fotos a las redes sociales de 'Buen Día'. Recuerde que también puede repasar todas las recetas en nuestro canal de Youtube.")
+
+    def test_el_financiero_podcast(self):
+        self.verifica("el_financiero", "Acceda a todos los capítulos de este podcast en nuestros canales de Youtube y Spotify.")
+        self.verifica("el_financiero", "Acceda a todos los capítulos de este podcast en nuestros canales de Youtube y Spotify. LEA MÁS: Otra nota relacionada")
+
+    def test_costaricastar_invitacion_solo_al_inicio(self):
+        frase = "If you would like The Costa Rica Star to publish your business press release, please contact us ."
+        self.verifica("costaricastar", frase, al_final=False)
+        en_medio = CUERPO.strip() + " " + frase + " " + CUERPO.strip()
+        self.assertIn("press release", limpiar_relleno("costaricastar", en_medio))
+
+    def test_caribeactual_invitacion_a_whatsapp_y_teasers(self):
+        self.verifica("caribeactual", "¿Le interesan las noticias de Pococí? Únase a nuestro grupo de noticias en Whatsapp La Delegación Regional requiere la colaboración de… La nota completa")
+
+    def test_no_toca_el_texto_sin_relleno(self):
+        for f in ("repretel", "eldelfino", "pulsocr", "el_jornal", "alajuela_digital", "teletica", "el_financiero", "costaricastar", "caribeactual"):
+            self.assertEqual(limpiar_relleno(f, CUERPO), CUERPO)
+
 
 if __name__ == "__main__":
     unittest.main()

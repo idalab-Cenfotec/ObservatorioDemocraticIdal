@@ -115,6 +115,39 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertLess(len("Nota breve."), MIN_RESTANTE)
         self.assertEqual(limpiar_relleno("lavozdegoicoechea", casi_solo_relleno), casi_solo_relleno)
 
+    def test_costaricastar_quita_el_aviso_de_columnistas_invitados(self):
+        aviso = ("Editors note: The views expressed by guest columnists are not necessarily those of The Costa Rica Star, "
+                 "its advertisers, or its staff")
+        cuerpo = "Love him or hate him President Trump's popularity is on the rise with approval ratings topping fifty percent. " * 3
+        # al inicio, con y sin punto final, y con la tipografía curva de "Editor's"
+        self.assertEqual(limpiar_relleno("costaricastar", aviso + " " + cuerpo), cuerpo.strip())
+        self.assertEqual(limpiar_relleno("costaricastar", aviso + ". " + cuerpo), cuerpo.strip())
+        self.assertEqual(limpiar_relleno("costaricastar", aviso.replace("Editors", "Editor’s") + " " + cuerpo), cuerpo.strip())
+        # variantes: "Editors Note" con mayúscula y espacio antes de la coma
+        variante = "By Britt Nelson Editors Note: The views expressed by guest columnists are not necessarily those of The Costa Rica Star , its advertisers, or its staff. "
+        self.assertEqual(limpiar_relleno("costaricastar", variante + cuerpo), "By Britt Nelson " + cuerpo.strip())
+        # tras el crédito de la caricatura y del autor: el crédito se conserva, el aviso no
+        con_credito = "Cartoon by Clay Jones By Britt Nelson " + aviso + ". " + cuerpo
+        esperado = "Cartoon by Clay Jones By Britt Nelson" + " " + cuerpo.strip()
+        self.assertEqual(" ".join(limpiar_relleno("costaricastar", con_credito).split()), esperado)
+        # si solo hay aviso no queda nada que valga la pena: no se toca (lo descarta es_sin_contenido)
+        solo_aviso = aviso + ". Latinos& Latin-Americans"
+        self.assertEqual(limpiar_relleno("costaricastar", solo_aviso), solo_aviso)
+        self.assertEqual(limpiar_relleno("ticotimes", aviso + " " + cuerpo), aviso + " " + cuerpo)  # solo en su fuente
+
+    def test_larevistacr_quita_la_presentacion_del_audio_y_conserva_los_titulares(self):
+        intro = ("Asamblea Legislativa de Costa. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
+                 "en archivo de audio. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica. "
+                 "Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa.")
+        titulares = ("Aprueban proyecto que sanciona a jerarcas que incumplan con reglamentación de Leyes. "
+                     "Ministerio de Hacienda deberá publicar lista de contribuyentes que reportan cero ganancias.")
+        self.assertEqual(limpiar_relleno("larevistacr", intro + " " + titulares), titulares)
+        # sin titulares no queda texto suficiente: se deja igual y es_sin_contenido la descarta
+        self.assertEqual(limpiar_relleno("larevistacr", intro), intro)
+        self.assertTrue(es_sin_contenido("larevistacr", limpiar_relleno("larevistacr", intro)))
+        # solo al inicio de la nota
+        self.assertEqual(limpiar_relleno("larevistacr", titulares + " " + intro), titulares + " " + intro)
+
     def test_plantilla(self):
         self.assertTrue(es_plantilla("Mauris mattis auctor cursus. Phasellus tellus tellus"))
         self.assertTrue(es_plantilla("Lorem ipsum dolor sit amet"))

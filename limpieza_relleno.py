@@ -145,7 +145,17 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
             r"\s*(?:For more information[^:]{0,100}?|To learn more),?\s*please contact:\s*RE/MAX Ocean Surf and Sun.{0,250}$",
             _S)],
         # Restos de HTML del editor (marcador de posición del cursor) que quedaron como texto
-        "cualquiera": [re.compile(r"\s*span data-mce-type'bookmark'[^/]{0,250}?/span")]},
+        "cualquiera": [
+            re.compile(r"\s*span data-mce-type'bookmark'[^/]{0,250}?/span"),
+            # Aviso fijo sobre columnistas invitados, al inicio o tras el crédito de la caricatura/autor
+            re.compile(
+                r"\s*Editor[’']?s note:\s*The views expressed by guest columnists are not necessarily those of "
+                r"The Costa Rica Star\s*,\s*its advertisers, or its staff\.?", re.I)]},
+    # Presentación fija del audio semanal "Acontecer Legislativo" que antecede a los titulares
+    "larevistacr": {"inicio": [re.compile(
+        r"^Asamblea Legislativa de Costa\. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
+        r"en archivo de audio\. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica\. "
+        r"Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa\.\s*")]},
     # Biografía del autor de la columna, tras una raya de guiones bajos
     "elmundocr": {"fin": [re.compile(
         r"\s*_{5,}\s*El autor es .{0,400}$", _S)]},

@@ -234,16 +234,21 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
 # con las que el OIJ cierra todos los boletines: el teléfono del Centro de Información Confidencial y el recordatorio
 # de que la persona puede ser requerida como testigo. Pueden ir seguidas de un dato propio ("Denuncia interpuesta
 # el ...") o de otro texto del sitio, así que se quitan donde aparezcan.
+# Algunos sitios escriben estas frases con espacios duros (U+00A0) entre palabras: _ws deja pasar cualquier espacio.
+def _ws(frase: str) -> str:
+    return r"\s+".join(re.escape(w) for w in frase.split())
+
+
 _OIJ_BOLETIN = [
     # Se conserva el espacio anterior y se consume el posterior, para no pegar la frase siguiente. Si la frase va entre
     # comillas (declaración citada dentro de la nota) no se toca.
     re.compile(
-        r"(?<![«“\"])\bCualquier información que pueda brindar es\s+indispensable que se comunique al teléfono\s+[\d\s\-–]{7,16}?\s*"
-        r"(?:o (?:escribir )?al\s+(?i:WhatsApp)\s+[\d\s\-–]{8,14}?\s*|o al correo electrónico\s+\S+\s*)?"
-        r"(?i:del Centro\s*de\s+Información Confidencial)(?: del OIJ)?\.?(?![»”,\"])\s*"),
+        r"(?<![«“\"])\b" + _ws("Cualquier información que pueda brindar es indispensable que se comunique al teléfono") + r"\s+[\d\s\-–]{7,16}?\s*"
+        r"(?:o\s+(?:escribir\s+)?al\s+(?i:WhatsApp)\s+[\d\s\-–]{8,14}?\s*|o\s+al\s+correo(?:\s+electrónico)?\s+\S+\s*)?"
+        r"(?i:del\s+Centro\s*de\s+Información\s+Confidencial)(?:\s+del\s+OIJ)?\.?(?![»”,\"])\s*"),
     re.compile(
-        r"(?<![«“\"])\bRecuerde que una persona es requerida por el OIJ por diversas situaciones, entre ellas para informaciones "
-        r"sobre investigaciones o como testigos de un caso y no necesariamente como imputados\.?(?![»”\"])\s*"),
+        r"(?<![«“\"])\b" + _ws("Recuerde que una persona es requerida por el OIJ por diversas situaciones, entre ellas para informaciones "
+                                   "sobre investigaciones o como testigos de un caso y no necesariamente como imputados") + r"\.?(?![»”\"])\s*"),
 ]
 for _fuente in ("radiopuertotv", "caribeactual", "tvsur", "puntarenasseoye", "radiolapampa", "latejacr", "teletica", "repretel"):
     REGLAS.setdefault(_fuente, {}).setdefault("cualquiera", []).extend(_OIJ_BOLETIN)

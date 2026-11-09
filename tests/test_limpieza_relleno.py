@@ -393,6 +393,17 @@ class TestRellenoBoletinesYEnlaces(unittest.TestCase):
             texto = f"{self.CUERPO_OIJ} Cualquier información que pueda brindar es indispensable que se comunique al {tel}"
             self.assertEqual(limpiar_relleno("tvsur", texto), self.CUERPO_OIJ)
 
+    def test_frases_con_espacios_duros(self):
+        nb = chr(0xa0)
+        tel = nb.join(self.TELEFONO.split(" "))
+        self.assertEqual(limpiar_relleno("caribeactual", f"{self.CUERPO_OIJ} {tel}"), self.CUERPO_OIJ)
+        self.assertEqual(limpiar_relleno("caribeactual", f"{self.CUERPO_OIJ} {nb.join(self.RECUERDE.split(chr(32)))}"), self.CUERPO_OIJ)
+
+    def test_variante_con_correo(self):
+        texto = (f"{self.CUERPO_OIJ} Cualquier información que pueda brindar es indispensable que se comunique al teléfono 800-8000645 "
+                 "o al correo cicooij@poder-judicial.go.cr del Centro de Información Confidencial del OIJ.")
+        self.assertEqual(limpiar_relleno("radiopuertotv", texto), self.CUERPO_OIJ)
+
     def test_no_pega_la_frase_siguiente(self):
         texto = f"{self.CUERPO_OIJ} {self.TELEFONO}La Delegación Regional de Limón informa otro caso distinto de este boletín."
         self.assertEqual(limpiar_relleno("radiopuertotv", texto),

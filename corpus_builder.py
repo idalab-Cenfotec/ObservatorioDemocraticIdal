@@ -22,6 +22,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 from output_cleaner import clean_dataframe, url_key
+from escritura_csv import debe_escribir_csv
 
 CR_TZ = timezone(timedelta(hours=-6))
 
@@ -152,8 +153,15 @@ def guardar_corpus_dual(
     webhook configurado, intenta además enviarlo a PostgreSQL vía N8N. Si el
     envío falla, el CSV de contingencia asegura que el lote no se pierda — se
     reintenta en la siguiente corrida gracias a ON CONFLICT (url) DO NOTHING.
+
+    SCRUM-29: con ESCRIBIR_CSV=false no se guarda el corpus CSV y PostgreSQL
+    queda como única fuente (ver escritura_csv.py). La contingencia sí se
+    sigue escribiendo: es el respaldo de un envío fallido, no el corpus.
     """
-    corpus.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
+    if debe_escribir_csv(webhook_url):
+        corpus.to_csv(out_path, sep=SEPARATOR, index=False, encoding="utf-8")
+    else:
+        _log("Escritura del corpus a CSV apagada (ESCRIBIR_CSV=false): solo se envía a PostgreSQL")
 
     if webhook_url is None:
         return
@@ -296,6 +304,11 @@ def build_corpus(
     out_path  = os.path.join(corpus_dir, filename)
 
     guardar_corpus_dual(corpus, out_path, webhook_url, webhook_token)
+
+    if not Path(out_path).exists():          # CSV apagado (SCRUM-29)
+        _log(f"Total artículos enviados: {len(corpus):,}")
+        _log(f"Fuentes                 : {stats['fuentes']}")
+        return stats
 
     _log(f"Corpus guardado: {out_path}")
     _log(f"Versión        : v{version}")

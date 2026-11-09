@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 
 from tests._util import RAIZ  # noqa: F401
-from limpieza_relleno import MIN_RESTANTE, es_plantilla, es_publicidad_apuestas, idioma_de_fuente, idioma_de_nota, limpiar_relleno
+from limpieza_relleno import MIN_RESTANTE, es_plantilla, es_publicidad_apuestas, es_sin_contenido, idioma_de_fuente, idioma_de_nota, limpiar_relleno
 from output_cleaner import clean_dataframe
 
 CUERPO = "La Municipalidad informó que las obras avanzan según lo previsto y que se mantendrá el cierre parcial. " * 5
@@ -119,6 +119,40 @@ class TestLimpiezaRelleno(unittest.TestCase):
         self.assertTrue(es_plantilla("Mauris mattis auctor cursus. Phasellus tellus tellus"))
         self.assertTrue(es_plantilla("Lorem ipsum dolor sit amet"))
         self.assertFalse(es_plantilla(CUERPO))
+
+    def test_sin_contenido_solo_el_aviso_fijo(self):
+        audio = ("Asamblea Legislativa de Costa. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
+                 "en archivo de audio. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica. "
+                 "Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa.")
+        self.assertTrue(es_sin_contenido("larevistacr", audio))
+        self.assertTrue(es_sin_contenido("larevistacr", audio.replace(". ", ".   ")))  # espacios distintos
+        # con titulares la nota sí tiene información: se conserva
+        self.assertFalse(es_sin_contenido("larevistacr", audio + " Aprueban proyecto que sanciona a jerarcas que incumplan."))
+        self.assertFalse(es_sin_contenido("adiariocr", audio))  # solo en su fuente
+        nota = "Editor’s note: The views expressed by guest columnists are not necessarily those of The Costa Rica Star, its advertisers, or its staff."
+        self.assertTrue(es_sin_contenido("costaricastar", nota + " Latinos& Latin-Americans"))
+        self.assertFalse(es_sin_contenido("costaricastar", nota + " " + CUERPO))
+        loteria = ("Durante la noche de este 1 de noviembre se celebró el sorteo #4925 de la Lotería Nacional. Detallamos cuáles fueron "
+                   "los números ganadores. En caso de querer revivir el sorteo, puede verlo en el video que aparece en el link.")
+        self.assertTrue(es_sin_contenido("repretel", loteria))
+        self.assertFalse(es_sin_contenido("repretel", loteria + " Primer premio: 1234 serie 056. Segundo premio: 5678."))
+        self.assertFalse(es_sin_contenido("repretel", None))
+        self.assertFalse(es_sin_contenido("repretel", ""))
+
+    def test_clean_dataframe_descarta_notas_sin_contenido(self):
+        audio = ("Asamblea Legislativa de Costa. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
+                 "en archivo de audio. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica. "
+                 "Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa.")
+        fila = lambda url, fuente, texto, titulo: {
+            "source": fuente, "url": url, "title": titulo, "publication_date": "2026-10-05 10:00:00",
+            "scraping_date": "2026-10-05 11:00:00", "section": "Noticias", "full_text": texto, "language": "es"}
+        df = pd.DataFrame([
+            fila("https://a.cr/1", "larevistacr", audio, "Resumen del acontecer legislativo: 27-02-2026"),
+            fila("https://a.cr/2", "larevistacr", audio + " Aprueban proyecto de ley sobre el marchamo.", "Resumen: 13-02-2026"),
+        ])
+        out, stats, _ = clean_dataframe(df, verbose=False)
+        self.assertEqual(stats["dropped_sin_contenido"], 1)
+        self.assertEqual(list(out["url"]), ["https://a.cr/2"])
 
     def test_idioma_se_decide_por_la_fuente(self):
         self.assertEqual(idioma_de_fuente("ticosland"), "en")

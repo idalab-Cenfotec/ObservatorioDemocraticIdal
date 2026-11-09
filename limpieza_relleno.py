@@ -259,6 +259,34 @@ def es_plantilla(texto: str) -> bool:
     return bool(texto) and bool(_PLANTILLA.search(texto))
 
 
+# Notas que son solo el aviso fijo de la fuente y no traen contenido propio. Se comparan contra el texto COMPLETO
+# (fullmatch): una nota que además trae titulares o cuerpo no coincide y se conserva.
+_SIN_CONTENIDO = {
+    # Publicación semanal del audio "Acontecer Legislativo": el texto es solo la presentación del audio.
+    "larevistacr": [re.compile(
+        r"Asamblea Legislativa de Costa\. Desde la Asamblea Legislativa, compartimos con ustedes «Acontecer Legislativo» "
+        r"en archivo de audio\. Esta es la edición que resume los principales acontecimientos en el Congreso de Costa Rica\. "
+        r"Producido por el Departamento de Relaciones Públicas, Prensa y Protocolo de la Asamblea Legislativa\.?")],
+    # Solo la nota del editor sobre columnistas invitados (el artículo no se alcanzó a extraer).
+    "costaricastar": [re.compile(
+        r"Editor[’']s note: The views expressed by guest columnists are not necessarily those of The Costa Rica Star, "
+        r"its advertisers, or its staff\.?[^.]{0,80}")],
+    # Aviso del sorteo de la Lotería Nacional: los números ganadores van en un video/imagen, no en el texto.
+    "repretel": [re.compile(
+        r"Durante la noche de este [^.]{1,40} se celebró el sorteo #\d+ de la Lotería Nacional\. "
+        r"Detallamos cuáles fueron los números ganadores\."
+        r"(?: En caso de querer revivir el sorteo, puede verlo en el video que aparece en el link\.)?")],
+}
+
+
+def es_sin_contenido(fuente: str, texto: str) -> bool:
+    """True si el texto es solo el aviso fijo conocido de la fuente (sin información propia de la nota)."""
+    if not isinstance(texto, str) or not texto:
+        return False
+    limpio = " ".join(texto.split())
+    return any(p.fullmatch(limpio) for p in _SIN_CONTENIDO.get(fuente, []))
+
+
 def limpiar_relleno(fuente: str, texto: str) -> str:
     """Devuelve el texto sin el relleno conocido de la fuente (o el mismo texto si no aplica)."""
     reglas = REGLAS.get(fuente)

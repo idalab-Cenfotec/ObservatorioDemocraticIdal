@@ -9,7 +9,8 @@ comporta exactamente igual que hoy. Se activa al cierre, cuando el equipo confir
 ## 1. Flujo actual (escritura dual)
 
 ```
-GitHub Actions, todos los días 07:00 UTC (01:00 en Costa Rica) — pipeline.yml
+GitHub Actions, programado a las 07:00 UTC (01:00 en Costa Rica) — pipeline.yml
+  (GitHub no garantiza la hora: en la práctica lo ha iniciado entre las 12:30 y las 16:30 UTC)
 │
 ├─ Grupos de scrapers ──► output/*.csv ──► artifacts por grupo
 │
@@ -55,8 +56,17 @@ Archivos que cambian: `escritura_csv.py` (nuevo), `corpus_builder.py`, `corpus_u
 - [ ] No hay lotes en `contingencia/` (lo dice el resumen de la corrida: "Lotes en contingencia: 0").
 - [ ] SCRUM-26 (deduplicación en `corpus_updater.py`) está cerrada o se confirmó que no la afecta este cambio.
 - [ ] Este cambio ya está en `main` (pull request revisado y fusionado).
+- [ ] El equipo sabe que, con el CSV apagado, el pipeline no debe quedar detenido más de 7 días: GitHub borra el
+      caché que no se usa en ese plazo y con él se pierde el corpus de referencia **y lo que haya en
+      `contingencia/`** (detalle en la sección 5). Si hay que pausarlo más tiempo, vaciar antes `contingencia/`.
 
 ### 3.2 Conservar el corpus original (criterio de aceptación)
+
+**Alcance de este respaldo.** El respaldo completo del corpus es el `pg_dump` diario de PostgreSQL
+(`db/respaldo/README.md`). PostgreSQL ya tiene más artículos que el corpus CSV: los ~13.9 mil de Periódico Mensaje y
+los de El Mundo CR entraron por el cargador (`cargar_csv_a_postgres.py`) y el flujo de rescate, no por el corpus CSV.
+El CSV consolidado de esta sección cubre **solo el corpus histórico** en CSV y se conserva porque así lo pide el
+criterio de aceptación; no reemplaza al `pg_dump`.
 
 El corpus CSV completo no es un solo archivo: es la **base histórica** (`corpus_observatorio_v7_clean_20260703.csv`)
 más las versiones diarias del pipeline (ver "Consolidar el Corpus" en el README). Por eso el respaldo se hace con
@@ -99,9 +109,8 @@ más las versiones diarias del pipeline (ver "Consolidar el Corpus" en el README
    - "Lotes en contingencia: 0".
 5. En PostgreSQL, el conteo de `articles` subió con lo de ese día:
    ```bash
-   docker exec observatorio_postgres psql -U devidalab -d observatorio -c "SELECT COUNT(*) FROM articles;"
+   docker exec observatorio_postgres psql -U devidalab -d observatorio_db -c "SELECT COUNT(*) FROM articles;"
    ```
-   (ajustar el nombre de la base si es otro).
 
 ## 4. Cómo revertir
 
@@ -134,14 +143,13 @@ Para quien necesite el corpus fuera de la base (Metodología, papers), se export
 
 ```bash
 mkdir -p ~/exports
-docker exec observatorio_postgres psql -U devidalab -d <base> \
+docker exec observatorio_postgres psql -U devidalab -d observatorio_db \
   -c "\copy (SELECT * FROM articles ORDER BY publication_date) TO STDOUT WITH CSV HEADER" \
   | gzip > ~/exports/corpus_postgres_$(date +%F).csv.gz
 zcat ~/exports/corpus_postgres_$(date +%F).csv.gz | wc -l     # filas + 1 (encabezado)
 ```
 
-`<base>` es el nombre de la base del contenedor (`docker exec observatorio_postgres psql -U devidalab -l` las
-lista). El respaldo de la base en sí es el `pg_dump` diario descrito en `db/respaldo/README.md`.
+El respaldo de la base en sí es el `pg_dump` diario descrito en `db/respaldo/README.md`.
 
 ### Limpieza posterior (Fase 2, no es parte de esta tarea)
 

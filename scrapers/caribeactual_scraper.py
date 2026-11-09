@@ -131,11 +131,13 @@ class CarribeActualScraper(BaseScraper):
                 date_raw = (await date_el.inner_text()).strip()
             publication_date = parse_caribe_date(date_raw) if date_raw else "NULL"
 
-            # Full text: all <p> inside div.entry-content
+            # Full text: solo los <p> hijos directos de div.entry-content. Los <p> anidados
+            # pertenecen a bloques ajenos a la nota (notas destacadas de Newspack y
+            # "Relacionados" de Jetpack) y contaminaban el texto.
             content_div = await page.query_selector("div.entry-content")
             full_text = ""
             if content_div:
-                paras = await content_div.query_selector_all("p")
+                paras = await content_div.query_selector_all(":scope > p")
                 parts = []
                 for p in paras:
                     txt = (await p.inner_text()).strip()

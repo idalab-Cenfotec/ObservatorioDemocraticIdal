@@ -371,5 +371,63 @@ class TestRellenoGrupoA(unittest.TestCase):
             self.assertEqual(limpiar_relleno(f, CUERPO), CUERPO)
 
 
+class TestRellenoBoletinesYEnlaces(unittest.TestCase):
+    """Boletines del OIJ (se conserva el cuerpo) y cierres fijos de guanacastealaaltura (textos de notas reales)."""
+
+    CUERPO_OIJ = ("La Delegación Regional de Cartago del Organismo de Investigación Judicial (OIJ) requiere la colaboración de la "
+                  "ciudadanía para ubicar a Juan Pérez, de 34 años, alias Chino, vecino de Tejar, visto por última vez el 20 de enero de 2024.")
+    TELEFONO = ("Cualquier información que pueda brindar es indispensable que se comunique al teléfono 800-8000645 "
+                "o al WhatsApp 8800-0645 del Centro de Información Confidencial.")
+    RECUERDE = ("Recuerde que una persona es requerida por el OIJ por diversas situaciones, entre ellas para informaciones "
+                "sobre investigaciones o como testigos de un caso y no necesariamente como imputados.")
+
+    def test_quita_las_frases_fijas_y_conserva_los_datos_propios(self):
+        for fuente in ("radiopuertotv", "caribeactual", "tvsur"):
+            texto = f"{self.CUERPO_OIJ} {self.TELEFONO} Denuncia interpuesta el 21/01/2024. {self.RECUERDE}"
+            self.assertEqual(limpiar_relleno(fuente, texto), f"{self.CUERPO_OIJ} Denuncia interpuesta el 21/01/2024.")
+
+    def test_variantes_del_telefono(self):
+        for tel in ("teléfono 800-8000645 del Centro de Información Confidencial.",
+                    "teléfono 800-8000645 o al Whatsapp 8800-0645 del Centro de información confidencial.",
+                    "teléfono 800 8000 645 o al WhatsApp 8800-0645 del Centro de Información Confidencial"):
+            texto = f"{self.CUERPO_OIJ} Cualquier información que pueda brindar es indispensable que se comunique al {tel}"
+            self.assertEqual(limpiar_relleno("tvsur", texto), self.CUERPO_OIJ)
+
+    def test_no_pega_la_frase_siguiente(self):
+        texto = f"{self.CUERPO_OIJ} {self.TELEFONO}La Delegación Regional de Limón informa otro caso distinto de este boletín."
+        self.assertEqual(limpiar_relleno("radiopuertotv", texto),
+                         f"{self.CUERPO_OIJ} La Delegación Regional de Limón informa otro caso distinto de este boletín.")
+
+    def test_no_toca_la_cita_textual_dentro_de_una_nota(self):
+        cita = ("«Cualquier información que pueda brindar es indispensable que se comunique al teléfono 800-8000645 "
+                "del Centro de Información Confidencial», indicó la oficina de prensa del OIJ.")
+        texto = f"{self.CUERPO_OIJ} {cita}"
+        self.assertEqual(limpiar_relleno("caribeactual", texto), texto)
+
+    def test_no_deja_la_nota_casi_vacia(self):
+        texto = f"Se busca a una persona. {self.TELEFONO}"
+        self.assertEqual(limpiar_relleno("radiopuertotv", texto), texto)
+
+    def test_otras_fuentes_no_se_tocan(self):
+        texto = f"{self.CUERPO_OIJ} {self.TELEFONO}"
+        self.assertEqual(limpiar_relleno("crhoy", texto), texto)
+
+    def test_cierre_del_imn(self):
+        base = CUERPO.strip() + " Estas ráfagas pueden alcanzar 80 km/h en algunos casos aislados."
+        for cierre in ("Manténganse informados a través de las redes sociales, Twitter: IMNCR, Facebook: Instituto Meteorológico Nacional CR y la Página WEB: http://www.imn.ac.cr",
+                       "Mantenerse informados a través de las redes sociales, Twitter: IMNCR, Facebook: Instituto Meteorológico Nacional CR y la Página WEB: www.imn.ac.cr"):
+            self.assertEqual(limpiar_relleno("guanacastealaaltura", base + " " + cierre), base)
+
+    def test_enlaces_del_reporte_covid(self):
+        base = CUERPO.strip() + " Por edad son 847 adultos, 1.886 adultos mayores y cuatro menores de edad."
+        for cierre in ("Datos diarios (nacional, cantonal y hospitalizaciones): https://bit.ly/3hIMPk4 Disponibles para descarga: https://bit.ly/2UYCtCM",
+                       "Actualización diaria (nacional, cantonal y hospitalizaciones): https://bit.ly/3hIMPk4 Datos disponibles para descarga: https://bit.ly/2UYCtCM"):
+            self.assertEqual(limpiar_relleno("guanacastealaaltura", base + " " + cierre), base)
+
+    def test_deja_los_enlaces_de_los_comunicados(self):
+        texto = CUERPO.strip() + " Puede descargar su solicitud en el sitio https://pensiones.ccss.sa.cr y remitirlo por correo."
+        self.assertEqual(limpiar_relleno("guanacastealaaltura", texto), texto)
+
+
 if __name__ == "__main__":
     unittest.main()

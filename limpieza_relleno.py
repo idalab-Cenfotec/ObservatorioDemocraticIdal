@@ -229,6 +229,37 @@ REGLAS: dict[str, dict[str, list[re.Pattern]]] = {
         r"(?:aquí encontrará el enlace directo \.|en su correo electrónico\.|puede accesarlo aquí \.)\s*$", _S)]},
 }
 
+# Boletines del OIJ ("requiere la colaboración de la ciudadanía"): el cuerpo (quién, dónde, cuándo, edad, alias,
+# fecha de la denuncia) es información propia de cada nota y se conserva. Se quitan solo las dos frases fijas
+# con las que el OIJ cierra todos los boletines: el teléfono del Centro de Información Confidencial y el recordatorio
+# de que la persona puede ser requerida como testigo. Pueden ir seguidas de un dato propio ("Denuncia interpuesta
+# el ...") o de otro texto del sitio, así que se quitan donde aparezcan.
+_OIJ_BOLETIN = [
+    # Se conserva el espacio anterior y se consume el posterior, para no pegar la frase siguiente. Si la frase va entre
+    # comillas (declaración citada dentro de la nota) no se toca.
+    re.compile(
+        r"(?<![«“\"])\bCualquier información que pueda brindar es\s+indispensable que se comunique al teléfono\s+[\d\s\-–]{7,16}?\s*"
+        r"(?:o (?:escribir )?al\s+(?i:WhatsApp)\s+[\d\s\-–]{8,14}?\s*|o al correo electrónico\s+\S+\s*)?"
+        r"(?i:del Centro\s*de\s+Información Confidencial)(?: del OIJ)?\.?(?![»”,\"])\s*"),
+    re.compile(
+        r"(?<![«“\"])\bRecuerde que una persona es requerida por el OIJ por diversas situaciones, entre ellas para informaciones "
+        r"sobre investigaciones o como testigos de un caso y no necesariamente como imputados\.?(?![»”\"])\s*"),
+]
+for _fuente in ("radiopuertotv", "caribeactual", "tvsur", "puntarenasseoye", "radiolapampa", "latejacr", "teletica", "repretel"):
+    REGLAS.setdefault(_fuente, {}).setdefault("cualquiera", []).extend(_OIJ_BOLETIN)
+
+# guanacastealaaltura: los partes del IMN y del reporte diario de COVID terminan con enlaces/redes fijos, sin información
+# propia. Los demás enlaces de la fuente son parte legítima de los comunicados y no se tocan.
+REGLAS["guanacastealaaltura"].setdefault("fin", []).extend([
+    re.compile(
+        r"\s*Mant\w{2,8}se informados[^.]{0,60}?(?:redes sociales|canales oficiales)\s*,?\s*:?\s*Twitter: IMNCR,?\s*"
+        r"Facebook: Instituto Meteorológico Nacional(?: CR)?\s*,?\s*(?:y\s+)?(?:la Página (?:WEB|Web)|Sitio web)?\s*:?\s*"
+        r"(?:(?:https?://)?www\.imn\.ac\.cr/?\s*){1,2}$", _I),
+    re.compile(
+        r"\s*(?:(?:Datos|Actualización|Información) diari[ao]s? \(nacional, cantonal y hospitalizaci(?:ón|ones)\)|[^.:]{0,100}?siguiente enlace):\s*"
+        r"https?://bit\.ly/3hIMPk4\s*(?:Datos )?[Dd]isponibles para descarga:\s*https?://bit\.ly/2UYCtCM\s*$"),
+])
+
 # Idioma de cada fuente. Los scrapers lo ponían con langdetect nota por nota (falla con textos cortos:
 # marcaba como inglés notas en español) o fijo y mal (ticosland salía como español). Todo el corpus es de medios
 # costarricenses en español salvo estos tres medios en inglés, así que el idioma se decide por la fuente.

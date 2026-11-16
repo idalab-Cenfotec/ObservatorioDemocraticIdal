@@ -7,6 +7,11 @@ Original file is located at
     https://colab.research.google.com/drive/11KUU22vQXyRBXCRL2EhRIg2p2GlueuQK
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -14,6 +19,8 @@ import time
 import re
 import logging
 from datetime import datetime
+
+from scrapers.garita_parser import extraer_enlaces, extract_article_data
 
 # --- Configuración ---
 SECCIONES = {
@@ -61,47 +68,8 @@ def get_soup(url, session):
         print(f"  ⚠️  Error: {url} → {e}")
         return None
 
-def clean_text(text):
-    """Elimina espacios/saltos de línea extra."""
-    return re.sub(r'\s+', ' ', text).strip() if text else ""
-
-def extract_article_data(soup):
-    """
-    Extrae título, fecha y contenido desde la página interna del artículo.
-    Selectores basados en la estructura real de noticiaslagaritacr.com:
-      - Título:    <h1 class="title"> dentro de <div class="mg-header">
-      - Fecha:     <meta property="article:published_time"> → YYYY-MM-DD
-      - Contenido: <article class="small single">
-    """
-    # --- Título ---
-    title = None
-    mg_header = soup.find('div', class_='mg-header')
-    if mg_header:
-        h1 = mg_header.find('h1', class_='title')
-        if h1:
-            title = clean_text(h1.get_text())
-
-    # --- Fecha ---
-    date = None
-    meta_date = soup.find('meta', property='article:published_time')
-    if meta_date:
-        date = meta_date.get('content', '')[:10]  # YYYY-MM-DD
-
-    # --- Contenido ---
-    content = None
-    article_tag = soup.find('article', class_='small single')
-    if article_tag:
-        for tag in article_tag.find_all(['script', 'style', 'iframe',
-                                         'figure', 'nav', 'aside']):
-            tag.decompose()
-        for div in article_tag.find_all('div', class_=re.compile(r'post-share|gallery')):
-            div.decompose()
-        content = clean_text(article_tag.get_text())
-
-    return title, date, content
-
 # -------------------------------------------------------
-# PASO 1: Leer listado → extraer enlaces desde h4.title
+# PASO 1: Leer listado → extraer enlaces (garita_parser)
 # -------------------------------------------------------
 data = []
 urls_vistas = set()
@@ -117,24 +85,19 @@ with requests.Session() as session:
             print("  ❌ No se pudo acceder a la sección.")
             continue
 
-        # ✅ Selector correcto: <h4 class="title"> en la página de categoría
-        title_tags = main_soup.find_all('h4', class_='title')
-        print(f"  ✅ {len(title_tags)} noticias encontradas.\n")
+        # Listado de la categoría (tema nuevo del sitio; ver garita_parser.py)
+        enlaces = extraer_enlaces(main_soup)
+        print(f"  ✅ {len(enlaces)} noticias encontradas.\n")
 
         # -------------------------------------------------------
         # PASO 2: Entrar a cada enlace y extraer datos del artículo
         # -------------------------------------------------------
-        for i, h4 in enumerate(title_tags, 1):
-            a_tag = h4.find('a', href=True)
-            if not a_tag:
-                continue
-
-            link = a_tag['href']
+        for i, link in enumerate(enlaces, 1):
             if link in urls_vistas:
                 continue
             urls_vistas.add(link)
 
-            print(f"  [{i}/{len(title_tags)}] {link.split('/')[-2][:60]}...")
+            print(f"  [{i}/{len(enlaces)}] {link.split('/')[-2][:60]}...")
             time.sleep(DELAY)
 
             article_soup = get_soup(link, session)
@@ -166,7 +129,8 @@ with requests.Session() as session:
 # -------------------------------------------------------
 # PASO 3: DataFrame final + exportación
 # -------------------------------------------------------
-df_garita = pd.DataFrame(data)
+df_garita = pd.DataFrame(data, columns=['source', 'url', 'title', 'publication_date',
+                                         'scraping_date', 'section', 'full_text', 'language'])
 
 # Dedup por URL
 antes = len(df_garita)
@@ -182,11 +146,5 @@ df_garita.to_csv(OUT_FILE, index=False, encoding='utf-8', na_rep='NULL')
 print(f"💾 Archivo exportado: {OUT_FILE}")
 print(f"📋 Log de descartes:  {LOG_FILE}")
 print(f"📊 DataFrame final:   {len(df_garita)} filas x {len(df_garita.columns)} columnas")
-df_garita.head(8)
-
-try:
-    from google.colab import files
-except ImportError:
-    files = None
-df_garita.to_csv(OUT_FILE, index=False, encoding='utf-8', sep=',', na_rep='NULL')
-files.download(OUT_FILE)
+# (Colab: el CSV se descargaba con google.colab.files.download; en el runner no existe y
+# el CSV ya quedó escrito arriba, que es lo que lee el pipeline.)

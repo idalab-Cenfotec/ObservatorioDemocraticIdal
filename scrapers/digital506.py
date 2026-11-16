@@ -170,9 +170,4 @@ print(f"\nDataFrame: {len(df)} filas x {len(df.columns)} columnas")
 print(f"Descartados: {len(log_descartados)}")
 df.head(8)
 
-try:
-    from google.colab import files
-except ImportError:
-    files = None
 df.to_csv('DIGITAL506.csv', index=False, encoding='utf-8', sep=',', na_rep='NULL')
-files.download('DIGITAL506.csv')

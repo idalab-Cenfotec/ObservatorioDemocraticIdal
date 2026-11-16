@@ -176,9 +176,4 @@ df7.head(8)
 
 print(df7['section'].value_counts())
 
-try:
-    from google.colab import files
-except ImportError:
-    files = None
 df7.to_csv('elsoldeoccidente.csv', index=False, encoding='utf-8', sep=',', na_rep='NULL')
-files.download('elsoldeoccidente.csv')

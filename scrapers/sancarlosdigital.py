@@ -121,9 +121,4 @@ df8 = pd.DataFrame(data)
 print(f"\nDataFrame: {len(df8)} filas x {len(df8.columns)} columnas")
 df8.head(8)
 
-try:
-    from google.colab import files
-except ImportError:
-    files = None
 df8.to_csv('sancarlosdigital.csv', index=False, encoding='utf-8', sep=',', na_rep='NULL')
-files.download('sancarlosdigital.csv')

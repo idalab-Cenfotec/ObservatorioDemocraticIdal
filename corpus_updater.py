@@ -185,7 +185,9 @@ def reintentar_contingencia(webhook_url: str | None, webhook_token: str | None) 
             enviar_a_n8n(df, webhook_url, webhook_token)
             f.unlink()
             _log(f"Contingencia reenviada y eliminada: {f.name} ({len(df):,} artículos)")
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
+            # Cualquier falla (red, HTTP o limpieza de datos) deja el archivo para el próximo
+            # intento; un lote defectuoso no debe impedir que corra la actualización del día.
             _log(f"Contingencia {f.name} sigue sin poder enviarse: {e}")
 
 
@@ -206,7 +208,9 @@ def enviar_nuevos_dual(
         _log(f"Artículos nuevos enviados a PostgreSQL vía N8N: {t['recibidos']:,} recibidos, "
              f"{t['insertados']:,} nuevos, {t['ya_existian']:,} ya existían, {t['rechazados']:,} rechazados")
         return {**t, "nuevos_en_csv": len(df_nuevos), "contingencia": False}
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
+        # No solo errores de red: si la limpieza (clean_dataframe) falla, el lote igual debe
+        # quedar en contingencia/ y no se pierde.
         Path("contingencia").mkdir(parents=True, exist_ok=True)
         ruta_contingencia = f"contingencia/{datetime.now(CR_TZ):%Y-%m-%d}_nuevos.csv"
         df_nuevos.to_csv(ruta_contingencia, sep=SEPARATOR, index=False, encoding="utf-8")
@@ -274,7 +278,9 @@ def update_corpus(
 """)
 
     # ── 0. Reintentar envíos pendientes de una corrida anterior ──────────────
-    reintentar_contingencia(webhook_url, webhook_token)
+    # En --dry-run no se toca nada: reintentar enviaría y borraría archivos de contingencia/.
+    if not dry_run:
+        reintentar_contingencia(webhook_url, webhook_token)
 
     # ── 1. Encontrar corpus maestro existente ────────────────────────────────
     latest = _find_latest_corpus(corpus_dir)
